@@ -13,6 +13,7 @@
 - ❌ 无高频/短线交易（< 3 天）
 - ❌ 无长期基本面投资（> 6 个月）
 - ❌ 无复杂量化模型（如因子模型、高频交易）
+- 工程环境、依赖管理和命令执行统一使用 `uv`
 
 ### 时间跨度
 - 目标持仓周期：**1 周 – 3 个月**
@@ -64,8 +65,17 @@
     "event_summary": "string"
   },
 
+  "decision_synthesis": {
+    "overall_bias": "bullish | neutral | bearish",
+    "confidence_score": "0-1 float",
+    "actionability_state": "actionable | watch | avoid",
+    "conflict_state": "aligned | mixed | conflicted",
+    "blocking_flags": ["string"],
+    "risks": ["string"]
+  },
+
   "trade_plan": {
-    "bias": "bullish | neutral | bearish",
+    "overall_bias": "bullish | neutral | bearish",
 
     "bullish_scenario": {
       "entry_idea": "string",
@@ -82,10 +92,6 @@
     "do_not_trade_conditions": ["string"]
   },
 
-  "confidence_score": "0-1 float",
-
-  "risks": ["string"],
-
   "sources": [
     {
       "type": "technical | news | financial | macro",
@@ -100,23 +106,31 @@
 
 ### 3.1 偏向判断规则
 
-Agent 必须根据以下规则确定总体偏向：
+Agent 必须先生成四个模块的结构化结论，再由**决策综合层**统一产出 `decision_synthesis`。
 
-bias =
-  technical_signal（权重 0.5）+
-  sentiment_signal（权重 0.2）+
-  event_signal（权重 0.2）+
-  fundamental_signal（权重 0.1）
+当前系统基线默认启用四个核心模块：
 
-映射规则：
-- bullish = +1
-- neutral = 0
-- bearish = -1
+- technical
+- fundamental
+- sentiment
+- event
 
-最终决策：
-- score > 0.3 → bullish（看涨）
-- score < -0.3 → bearish（看跌）
-- 其他 → neutral（中性）
+默认配置权重为：
+
+- technical：0.5
+- sentiment：0.2
+- event：0.2
+- fundamental：0.1
+
+但最终 `overall_bias` 不能简单等同于固定权重求和结果，还必须统一经过：
+
+- 可用模块重归一化
+- 冲突状态判断
+- 数据完整度压制
+- 基本面硬约束压制
+- 执行性状态判断
+
+因此，交易计划必须消费 `decision_synthesis.overall_bias`、`actionability_state`、`blocking_flags` 等系统级字段，而不是自行重算方向。
 
 
 
@@ -164,6 +178,11 @@ bias =
 - 财报日期
 - 宏观敏感事件（美联储、CPI）
 - 公司特定催化剂
+
+补充约束：
+
+- 事件模块属于正式核心模块，不作为“可选未接入”能力处理
+- 事件窗口默认覆盖未来 `0-90` 天，以完整支撑系统定义的 `1 周 - 3 个月` 持仓周期
 
 
 ## 4. 交易计划要求（关键）
@@ -228,3 +247,5 @@ bias =
 ## 7. 非功能性需求
 - 输出必须为确定性结构化 JSON
 - 必须始终包含来源信息
+- Python 依赖以 `pyproject.toml` 和 `uv.lock` 为准
+- 默认开发命令通过 `uv run` 执行
