@@ -221,7 +221,7 @@ flowchart TD
 - `bb_squeeze`：`boolean`
 - `max_drawdown_63d`：`float`
 - `iv_vs_hv`：`float`
-- `risk_flags`：`[string]`（例如，`["elevated beta", "IV crush risk near earnings"]`）
+- `risk_flags`：`[string]`（例如，`["elevated beta", "iv premium"]`）
 
 ---
 
@@ -279,6 +279,12 @@ technical_score =
 ---
 
 ## 5. 输出 Schema
+
+API 对齐说明：
+
+- 本节定义的是**技术模块内部聚合输出**
+- 该模块在公共 HTTP 响应中映射到 `technical_analysis`
+- 对外字段与机器可读契约以 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml) 为准
 
 ```json
 {
