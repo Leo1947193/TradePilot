@@ -53,3 +53,52 @@
 
 - Write clear, descriptive commit messages. Preferred format: `<type>: <short summary>` (e.g. `fix: handle null case in user lookup`).
 - Each commit should represent one logical change.
+
+<!-- ==================== PROJECT-SPECIFIC RULES (TradePilot) ==================== -->
+
+## Project-Specific Rules
+
+- Treat `docs/zh/api/openapi.yaml` as the public API source of truth.
+- Before changing architecture or runtime behavior, also check `docs/zh/design/system-architecture.md`, `docs/zh/implementation/implementation-stack.md`, `docs/zh/implementation/runtime-contract.md`, and `docs/zh/implementation/data-sources.md`.
+- This project is V1 of a backend-only US stock analysis service. Do not add frontend pages, admin panels, or trading execution flows.
+- The product is a decision-support tool, not an auto-trading system.
+- Optimize for deterministic, explainable JSON output for a holding window of `1 week` to `3 months`.
+
+- Fixed stack for V1:
+  - `Python 3.11`
+  - `FastAPI` + `Uvicorn`
+  - `Pydantic v2`
+  - `LangGraph`
+  - `PostgreSQL` + `psycopg v3` + `psycopg_pool`
+  - `httpx`
+  - `pytest` + `pytest-asyncio`
+  - `uv` for dependency and virtualenv management
+- Do not introduce `ORM`, `Redis`, `Celery`, `WebSocket`, `SSE`, `Poetry`, or `pipenv` unless explicitly approved.
+
+- V1 exposes exactly one business endpoint: `POST /api/v1/analyses`.
+- The request is synchronous and must return the full JSON result in one response.
+- Do not add `job_id`, polling endpoints, background jobs, streaming responses, or public module-level debug endpoints without approval.
+- The external API accepts only the documented contract; do not add extra request fields casually.
+- Public API enums should remain lowercase. Time values must use `UTC` and `ISO 8601`.
+
+- Required module flow: `validate_request -> prepare_context -> parallel analysis modules -> synthesize_decision -> generate_trade_plan -> assemble_response -> persist_analysis`.
+- The four core analysis modules are `technical`, `fundamental`, `sentiment`, and `event`.
+- Cross-module weighting and conflict resolution are only allowed in the decision synthesis layer.
+- Trading-plan generation must consume system-level outputs; it must not recompute overall bias.
+
+- Keep layer boundaries strict:
+  - `app/api`: HTTP transport, validation, and error mapping only
+  - `app/graph`: orchestration only, no business scoring rules
+  - `app/analysis`: deterministic analysis and scoring rules
+  - `app/services/providers`: fetch and normalize external data only, never make trading decisions
+  - `app/repositories`: persistence only, never analysis logic
+- Do not expose LangGraph state, checkpoint IDs, internal runtime IDs, or node internals in public responses.
+
+- Provider integrations must be behind explicit interfaces before concrete implementations are added.
+- Default V1 providers are `yfinance` for market/financial/company-event basics, a news REST provider such as `Finnhub`, and a repository-managed static macro calendar provider.
+- Provider outputs must be normalized into internal DTOs; analysis modules must not consume raw third-party payloads directly.
+- If a provider is missing or fails, follow the documented degrade/fail rules instead of guessing values.
+
+- Only the four analysis modules may degrade. `validate_request`, `prepare_context`, `assemble_response`, and `persist_analysis` must fail the request if they fail.
+- A successful `200` response requires both a valid top-level response and successful PostgreSQL persistence.
+- External fetches may retry once with short backoff; database writes and internal rule errors must not be retried automatically.
