@@ -6,7 +6,6 @@ from app.graph.nodes.run_sentiment import (
     SENTIMENT_DEGRADED_REASON,
     SENTIMENT_DEGRADED_SUMMARY,
     SENTIMENT_DEGRADED_WARNING,
-    SENTIMENT_USABLE_SUMMARY,
     run_sentiment,
 )
 from app.services.providers.dtos import NewsArticle, ProviderSourceRef
@@ -113,11 +112,11 @@ class FakeNewsDataProvider:
 def make_news_article() -> NewsArticle:
     return NewsArticle(
         symbol="AAPL",
-        title="Apple holds steady ahead of earnings",
+        title="Apple beats expectations as services growth stays strong",
         published_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
         source_name="Example News",
         url="https://example.com/news/apple-steady",
-        summary="Apple shares trade in a narrow range before earnings.",
+        summary="Analysts highlight strong demand and another growth quarter.",
         category="company",
         source=ProviderSourceRef(
             name="finnhub",
@@ -142,9 +141,13 @@ def test_run_sentiment_provider_backed_path_writes_usable_result() -> None:
     assert provider.calls == [("AAPL", 5)]
     assert state.module_results.sentiment is not None
     assert state.module_results.sentiment.status == ModuleExecutionStatus.USABLE
-    assert state.module_results.sentiment.direction == "neutral"
-    assert state.module_results.sentiment.summary.startswith(SENTIMENT_USABLE_SUMMARY)
-    assert "Latest headline: Apple holds steady ahead of earnings" in state.module_results.sentiment.summary
+    assert state.module_results.sentiment.direction == "bullish"
+    assert state.module_results.sentiment.summary == (
+        "Sentiment analysis reviewed 1 provider-backed news article and found a bullish bias "
+        "(bullish hits: 4, bearish hits: 0). Latest headline: Apple beats expectations as "
+        "services growth stays strong"
+    )
+    assert state.module_results.sentiment.data_completeness_pct == 20.0
     assert state.module_results.sentiment.low_confidence is False
     assert state.diagnostics.degraded_modules == []
     assert state.diagnostics.warnings == []

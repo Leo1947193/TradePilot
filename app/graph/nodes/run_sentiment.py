@@ -4,15 +4,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
+from app.analysis.sentiment import analyze_news_sentiment
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
-    AnalysisDirection,
     AnalysisModuleName,
     AnalysisModuleResult,
     ModuleExecutionStatus,
 )
-from app.services.providers.dtos import NewsArticle
 from app.services.providers.interfaces import NewsDataProvider
 
 
@@ -24,9 +23,6 @@ SENTIMENT_DEGRADED_REASON = (
 )
 SENTIMENT_DEGRADED_WARNING = (
     "Sentiment analysis degraded: provider-backed news data is not available yet."
-)
-SENTIMENT_USABLE_SUMMARY = (
-    "Sentiment analysis has provider-backed news coverage, but the current V1 placeholder keeps the signal neutral until full rules are implemented."
 )
 
 AwaitableT = TypeVar("AwaitableT")
@@ -97,13 +93,15 @@ def _try_provider_backed_result(
     if not articles:
         return None
 
+    sentiment_signal = analyze_news_sentiment(articles)
+
     sentiment_result = AnalysisModuleResult(
         module=AnalysisModuleName.SENTIMENT,
         status=ModuleExecutionStatus.USABLE,
-        summary=_build_usable_summary(articles),
-        direction=AnalysisDirection.NEUTRAL,
-        data_completeness_pct=100.0,
-        low_confidence=False,
+        summary=sentiment_signal.summary,
+        direction=sentiment_signal.direction,
+        data_completeness_pct=sentiment_signal.data_completeness_pct,
+        low_confidence=sentiment_signal.low_confidence,
         reason=None,
     )
 
@@ -146,13 +144,6 @@ def _try_provider_backed_result(
             "sources": updated_sources,
         }
     )
-
-
-def _build_usable_summary(articles: list[NewsArticle]) -> str:
-    summary = SENTIMENT_USABLE_SUMMARY
-    if articles:
-        summary += f" Latest headline: {articles[0].title}"
-    return summary
 
 
 def _run_awaitable(awaitable: Awaitable[AwaitableT]) -> AwaitableT:
