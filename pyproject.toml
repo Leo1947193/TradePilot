@@ -7,7 +7,10 @@ dependencies = [
     "fastapi>=0.136.0,<1.0.0",
     "httpx>=0.28.0,<1.0.0",
     "langgraph>=1.1.6",
+    "psycopg-pool>=3.3.0",
+    "psycopg[binary]>=3.3.3",
     "pydantic>=2.0.0,<3.0.0",
+    "pydantic-settings>=2.13.1",
     "uvicorn>=0.44.0,<1.0.0",
 ]
 
