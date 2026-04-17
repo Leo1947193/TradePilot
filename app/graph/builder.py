@@ -20,6 +20,7 @@ from app.services.providers.interfaces import (
     FinancialDataProvider,
     MacroCalendarProvider,
     MarketDataProvider,
+    NewsDataProvider,
 )
 
 
@@ -97,6 +98,7 @@ def build_analysis_graph(
     *,
     market_data_provider: MarketDataProvider | None = None,
     financial_data_provider: FinancialDataProvider | None = None,
+    news_data_provider: NewsDataProvider | None = None,
     company_events_provider: CompanyEventsProvider | None = None,
     macro_calendar_provider: MacroCalendarProvider | None = None,
 ):
@@ -120,7 +122,14 @@ def build_analysis_graph(
             include_sources=financial_data_provider is not None,
         ),
     )
-    graph.add_node("run_sentiment", _wrap_module_node(run_sentiment, "sentiment"))
+    graph.add_node(
+        "run_sentiment",
+        _wrap_module_node(
+            lambda state: run_sentiment(state, news_data_provider=news_data_provider),
+            "sentiment",
+            include_sources=news_data_provider is not None,
+        ),
+    )
     graph.add_node(
         "run_event",
         _wrap_module_node(

@@ -11,6 +11,7 @@ from app.services.providers.dtos import (
     FinancialSnapshot,
     MacroCalendarEvent,
     MarketBar,
+    NewsArticle,
     ProviderSourceRef,
 )
 
@@ -107,6 +108,26 @@ class FakeFinancialDataProvider:
         )
 
 
+class FakeNewsDataProvider:
+    async def get_company_news(self, symbol: str, *, limit: int) -> list[NewsArticle]:
+        return [
+            NewsArticle(
+                symbol=symbol,
+                title=f"{symbol} trades quietly before catalyst",
+                published_at=datetime(2026, 4, 17, 11, 30, tzinfo=UTC),
+                source_name="Example News",
+                url="https://example.com/news",
+                summary="Coverage remains balanced ahead of the next catalyst.",
+                category="company",
+                source=ProviderSourceRef(
+                    name="news-data-provider",
+                    url="https://example.com/news",
+                    fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                ),
+            )
+        ]
+
+
 def test_build_analysis_graph_runs_end_to_end() -> None:
     repository = FakeAnalysisReportRepository()
     graph = build_analysis_graph(repository)
@@ -187,3 +208,18 @@ def test_build_analysis_graph_supports_provider_backed_technical_and_fundamental
         "market-data-provider",
         "financial-data-provider",
     ]
+
+
+def test_build_analysis_graph_supports_provider_backed_sentiment_node() -> None:
+    repository = FakeAnalysisReportRepository()
+    graph = build_analysis_graph(
+        repository,
+        news_data_provider=FakeNewsDataProvider(),
+    )
+
+    result = graph.invoke({"request": {"ticker": "aapl"}})
+    final_state = TradePilotState.model_validate(result)
+
+    assert final_state.module_results.sentiment is not None
+    assert final_state.module_results.sentiment.status.value == "usable"
+    assert [source.name for source in final_state.sources] == ["news-data-provider"]
