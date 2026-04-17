@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from app.graph.builder import build_analysis_graph
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.graph_state import PersistenceStatus, TradePilotState
+from app.services.providers.dtos import CompanyEvent, MacroCalendarEvent, ProviderSourceRef
 
 
 @dataclass
@@ -18,6 +19,42 @@ class FakeAnalysisReportRepository:
             record_id="report_graph_123",
             persisted_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
         )
+
+
+class FakeCompanyEventsProvider:
+    async def get_company_events(self, symbol: str, *, days_ahead: int) -> list[CompanyEvent]:
+        return [
+            CompanyEvent(
+                symbol=symbol,
+                event_type="earnings",
+                title=f"{symbol} earnings",
+                scheduled_at=datetime(2026, 4, 20, 20, 30, tzinfo=UTC),
+                category="company",
+                source=ProviderSourceRef(
+                    name="company-events-provider",
+                    url="https://example.com/company-events",
+                    fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                ),
+            )
+        ]
+
+
+class FakeMacroCalendarProvider:
+    async def get_macro_events(self, *, market: str, days_ahead: int) -> list[MacroCalendarEvent]:
+        return [
+            MacroCalendarEvent(
+                event_name="CPI",
+                country=market,
+                category="inflation",
+                scheduled_at=datetime(2026, 4, 18, 12, 30, tzinfo=UTC),
+                importance="high",
+                source=ProviderSourceRef(
+                    name="macro-calendar-provider",
+                    url="https://example.com/macro-calendar",
+                    fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                ),
+            )
+        ]
 
 
 def test_build_analysis_graph_runs_end_to_end() -> None:
@@ -60,3 +97,22 @@ def test_build_analysis_graph_topology_matches_v1_order() -> None:
     assert ("generate_trade_plan", "assemble_response") in edges
     assert ("assemble_response", "persist_analysis") in edges
     assert ("persist_analysis", "__end__") in edges
+
+
+def test_build_analysis_graph_supports_provider_backed_event_node() -> None:
+    repository = FakeAnalysisReportRepository()
+    graph = build_analysis_graph(
+        repository,
+        company_events_provider=FakeCompanyEventsProvider(),
+        macro_calendar_provider=FakeMacroCalendarProvider(),
+    )
+
+    result = graph.invoke({"request": {"ticker": "aapl"}})
+    final_state = TradePilotState.model_validate(result)
+
+    assert final_state.module_results.event is not None
+    assert final_state.module_results.event.status.value == "usable"
+    assert [source.name for source in final_state.sources] == [
+        "company-events-provider",
+        "macro-calendar-provider",
+    ]

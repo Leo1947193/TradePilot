@@ -15,6 +15,7 @@ from app.graph.nodes.run_technical import run_technical
 from app.graph.nodes.synthesize_decision import synthesize_decision
 from app.graph.nodes.validate_request import validate_request
 from app.repositories.analysis_reports import AnalysisReportRepository
+from app.services.providers.interfaces import CompanyEventsProvider, MacroCalendarProvider
 
 
 def _merge_dict_updates(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
@@ -55,7 +56,12 @@ class AnalysisGraphState(TypedDict, total=False):
     diagnostics: Annotated[dict[str, Any], _merge_diagnostics]
 
 
-def build_analysis_graph(repository: AnalysisReportRepository):
+def build_analysis_graph(
+    repository: AnalysisReportRepository,
+    *,
+    company_events_provider: CompanyEventsProvider | None = None,
+    macro_calendar_provider: MacroCalendarProvider | None = None,
+):
     graph = StateGraph(AnalysisGraphState)
 
     graph.add_node("validate_request", _wrap_node(validate_request, "request", "normalized_ticker", "request_id"))
@@ -63,7 +69,18 @@ def build_analysis_graph(repository: AnalysisReportRepository):
     graph.add_node("run_technical", _wrap_module_node(run_technical, "technical"))
     graph.add_node("run_fundamental", _wrap_module_node(run_fundamental, "fundamental"))
     graph.add_node("run_sentiment", _wrap_module_node(run_sentiment, "sentiment"))
-    graph.add_node("run_event", _wrap_module_node(run_event, "event"))
+    graph.add_node(
+        "run_event",
+        _wrap_module_node(
+            lambda state: run_event(
+                state,
+                company_events_provider=company_events_provider,
+                macro_calendar_provider=macro_calendar_provider,
+            ),
+            "event",
+            include_sources=company_events_provider is not None and macro_calendar_provider is not None,
+        ),
+    )
     graph.add_node("synthesize_decision", _wrap_node(synthesize_decision, "decision_synthesis"))
     graph.add_node("generate_trade_plan", _wrap_node(generate_trade_plan, "trade_plan"))
     graph.add_node("assemble_response", _wrap_node(assemble_response, "response", "sources"))
@@ -99,13 +116,16 @@ def _wrap_node(node, *keys: str):
     return wrapped
 
 
-def _wrap_module_node(node, module_key: str):
+def _wrap_module_node(node, module_key: str, *, include_sources: bool = False):
     def wrapped(state: AnalysisGraphState) -> dict[str, Any]:
         result = node(state)
         payload = result.model_dump(mode="python")
-        return {
+        output = {
             "module_results": {module_key: payload["module_results"][module_key]},
             "diagnostics": payload["diagnostics"],
         }
+        if include_sources:
+            output["sources"] = payload["sources"]
+        return output
 
     return wrapped
