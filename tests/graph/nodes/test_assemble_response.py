@@ -11,7 +11,8 @@ from app.graph.nodes.run_sentiment import run_sentiment
 from app.graph.nodes.run_technical import run_technical
 from app.graph.nodes.synthesize_decision import synthesize_decision
 from app.graph.nodes.validate_request import validate_request
-from app.schemas.api import AnalysisResponse
+from app.schemas.api import AnalysisResponse, DecisionSynthesis, ModuleContribution, Source
+from app.schemas.graph_state import ModuleResults
 
 
 def build_state_with_plan() -> dict:
@@ -48,31 +49,11 @@ def test_assemble_response_deduplicates_sources_in_first_use_order() -> None:
     pipeline_state = pipeline_state.model_copy(
         update={
             "sources": [
-                {
-                    "type": "technical",
-                    "name": "provider-a",
-                    "url": "https://example.com/a",
-                },
-                {
-                    "type": "technical",
-                    "name": "provider-a",
-                    "url": "https://example.com/a",
-                },
-                {
-                    "type": "news",
-                    "name": "provider-b",
-                    "url": "https://example.com/b",
-                },
-                {
-                    "type": "technical",
-                    "name": "provider-a",
-                    "url": "https://example.com/a",
-                },
-                {
-                    "type": "macro",
-                    "name": "provider-c",
-                    "url": "https://example.com/c",
-                },
+                Source(type="technical", name="provider-a", url="https://example.com/a"),
+                Source(type="technical", name="provider-a", url="https://example.com/a"),
+                Source(type="news", name="provider-b", url="https://example.com/b"),
+                Source(type="technical", name="provider-a", url="https://example.com/a"),
+                Source(type="macro", name="provider-c", url="https://example.com/c"),
             ]
         }
     )
@@ -129,3 +110,112 @@ def test_assemble_response_reflects_placeholder_module_summaries() -> None:
     assert "Fundamental analysis is degraded" in state.response.fundamental_analysis.fundamental_summary
     assert "Sentiment analysis is degraded" in state.response.sentiment_expectations.sentiment_summary
     assert "Event analysis is degraded" in state.response.event_driven_analysis.event_summary
+
+
+def test_assemble_response_maps_module_directions_into_public_payloads() -> None:
+    base_state = build_pipeline_state()
+    pipeline_state = base_state.model_copy(
+        update={
+            "module_results": ModuleResults.model_validate(
+                {
+                    "technical": {
+                        "module": "technical",
+                        "status": "usable",
+                        "summary": "Trend remains constructive.",
+                        "direction": "bullish",
+                        "data_completeness_pct": 90,
+                    },
+                    "fundamental": {
+                        "module": "fundamental",
+                        "status": "usable",
+                        "summary": "Profitability remains solid.",
+                        "direction": "bullish",
+                        "data_completeness_pct": 100,
+                    },
+                    "sentiment": {
+                        "module": "sentiment",
+                        "status": "usable",
+                        "summary": "Coverage leans positive.",
+                        "direction": "bullish",
+                        "data_completeness_pct": 80,
+                    },
+                    "event": {
+                        "module": "event",
+                        "status": "usable",
+                        "summary": "Near-term event risk remains elevated.",
+                        "direction": "bearish",
+                        "data_completeness_pct": 100,
+                    },
+                }
+            ),
+            "decision_synthesis": DecisionSynthesis.model_validate(
+                {
+                    **base_state.decision_synthesis.model_dump(mode="python"),
+                    "overall_bias": "bullish",
+                    "actionability_state": "watch",
+                    "blocking_flags": ["macro_event_high_sensitivity"],
+                    "module_contributions": [
+                        ModuleContribution(
+                            module="technical",
+                            enabled=True,
+                            status="usable",
+                            direction="bullish",
+                            direction_value=1,
+                            configured_weight=0.5,
+                            applied_weight=0.5,
+                            contribution=0.5,
+                            data_completeness_pct=90,
+                            low_confidence=False,
+                        ),
+                        ModuleContribution(
+                            module="fundamental",
+                            enabled=True,
+                            status="usable",
+                            direction="bullish",
+                            direction_value=1,
+                            configured_weight=0.1,
+                            applied_weight=0.1,
+                            contribution=0.1,
+                            data_completeness_pct=100,
+                            low_confidence=False,
+                        ),
+                        ModuleContribution(
+                            module="sentiment",
+                            enabled=True,
+                            status="usable",
+                            direction="bullish",
+                            direction_value=1,
+                            configured_weight=0.2,
+                            applied_weight=0.2,
+                            contribution=0.2,
+                            data_completeness_pct=80,
+                            low_confidence=False,
+                        ),
+                        ModuleContribution(
+                            module="event",
+                            enabled=True,
+                            status="usable",
+                            direction="bearish",
+                            direction_value=-1,
+                            configured_weight=0.2,
+                            applied_weight=0.2,
+                            contribution=-0.2,
+                            data_completeness_pct=100,
+                            low_confidence=False,
+                        ),
+                    ],
+                }
+            ),
+        }
+    )
+
+    state = assemble_response(pipeline_state)
+
+    assert state.response is not None
+    assert state.response.technical_analysis.technical_signal == "bullish"
+    assert state.response.fundamental_analysis.fundamental_bias == "bullish"
+    assert state.response.fundamental_analysis.composite_score == 0.1
+    assert state.response.sentiment_expectations.sentiment_bias == "bullish"
+    assert state.response.sentiment_expectations.news_tone == "positive"
+    assert state.response.event_driven_analysis.event_bias == "bearish"
+    assert state.response.event_driven_analysis.event_risk_flags == ["macro_event_high_sensitivity"]
