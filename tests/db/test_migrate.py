@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.migrate import (
+    DEFAULT_MIGRATIONS_DIR,
     INSERT_SCHEMA_MIGRATION_SQL,
     SCHEMA_MIGRATIONS_TABLE_SQL,
     SELECT_APPLIED_MIGRATIONS_SQL,
@@ -97,3 +98,10 @@ def test_schema_migrations_table_creation_runs_before_tracking_checks(tmp_path) 
     executed_sql = [sql for sql, _ in connection.executed]
     assert executed_sql[0] == " ".join(SCHEMA_MIGRATIONS_TABLE_SQL.split())
     assert executed_sql[1] == " ".join(SELECT_APPLIED_MIGRATIONS_SQL.split())
+
+
+def test_default_migrations_directory_includes_init_and_indexes() -> None:
+    migrations = discover_migrations(DEFAULT_MIGRATIONS_DIR)
+
+    assert [migration.version for migration in migrations] == ["0001", "0002"]
+    assert migrations[1].path.name == "0002_add_indexes.sql"
