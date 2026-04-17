@@ -1,0 +1,80 @@
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS analysis_reports (
+    id uuid PRIMARY KEY,
+    request_id text NOT NULL UNIQUE,
+    storage_schema_version text NOT NULL,
+    pipeline_version text NOT NULL,
+    ticker text NOT NULL,
+    raw_ticker text NOT NULL,
+    market text,
+    analysis_time timestamptz NOT NULL,
+    request_payload_json jsonb NOT NULL,
+    context_json jsonb NOT NULL,
+    diagnostics_json jsonb NOT NULL,
+    overall_bias text NOT NULL,
+    actionability_state text NOT NULL,
+    conflict_state text NOT NULL,
+    bias_score numeric(6, 4) NOT NULL,
+    confidence_score numeric(6, 4) NOT NULL,
+    data_completeness_pct numeric(5, 2) NOT NULL,
+    degraded_modules jsonb NOT NULL,
+    excluded_modules jsonb NOT NULL,
+    blocking_flags jsonb NOT NULL,
+    decision_synthesis_json jsonb NOT NULL,
+    trade_plan_json jsonb NOT NULL,
+    response_json jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (overall_bias IN ('bullish', 'neutral', 'bearish')),
+    CHECK (actionability_state IN ('actionable', 'watch', 'avoid')),
+    CHECK (conflict_state IN ('aligned', 'mixed', 'conflicted')),
+    CHECK (jsonb_typeof(request_payload_json) = 'object'),
+    CHECK (jsonb_typeof(context_json) = 'object'),
+    CHECK (jsonb_typeof(diagnostics_json) = 'object'),
+    CHECK (jsonb_typeof(degraded_modules) = 'array'),
+    CHECK (jsonb_typeof(excluded_modules) = 'array'),
+    CHECK (jsonb_typeof(blocking_flags) = 'array'),
+    CHECK (jsonb_typeof(decision_synthesis_json) = 'object'),
+    CHECK (jsonb_typeof(trade_plan_json) = 'object'),
+    CHECK (jsonb_typeof(response_json) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS analysis_module_reports (
+    id uuid PRIMARY KEY,
+    analysis_report_id uuid NOT NULL REFERENCES analysis_reports(id) ON DELETE CASCADE,
+    module_name text NOT NULL,
+    module_order smallint NOT NULL,
+    report_schema_version text NOT NULL,
+    status text NOT NULL,
+    direction text,
+    direction_value smallint,
+    data_completeness_pct numeric(5, 2),
+    low_confidence boolean NOT NULL,
+    summary text,
+    risk_flags jsonb NOT NULL,
+    report_json jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (analysis_report_id, module_name),
+    CHECK (module_name IN ('technical', 'fundamental', 'sentiment', 'event')),
+    CHECK (module_order IN (1, 2, 3, 4)),
+    CHECK (status IN ('usable', 'degraded', 'excluded')),
+    CHECK (direction_value IN (-1, 0, 1) OR direction_value IS NULL),
+    CHECK (jsonb_typeof(risk_flags) = 'array'),
+    CHECK (jsonb_typeof(report_json) = 'object')
+);
+
+CREATE TABLE IF NOT EXISTS analysis_sources (
+    id uuid PRIMARY KEY,
+    analysis_report_id uuid NOT NULL REFERENCES analysis_reports(id) ON DELETE CASCADE,
+    source_type text NOT NULL,
+    source_name text NOT NULL,
+    source_url text NOT NULL,
+    fetched_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (source_type IN ('technical', 'financial', 'news', 'macro', 'event')),
+    CHECK (length(source_url) > 0)
+);
