@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db.pool import close_connection_pool, create_connection_pool, open_connection_pool
 from app.graph.builder import build_analysis_graph
 from app.repositories.analysis_reports import AnalysisReportRepository
@@ -68,18 +68,7 @@ async def lifespan(app: FastAPI):
             app.state.postgres_pool = pool
             app.state.analysis_report_repository = PostgreSQLAnalysisReportRepository(pool)
 
-        try:
-            app.state.market_data_provider = build_market_data_provider(settings)
-            app.state.financial_data_provider = build_financial_data_provider(settings)
-            app.state.news_data_provider = build_news_data_provider(settings)
-            app.state.company_events_provider = build_company_events_provider(settings)
-            app.state.macro_calendar_provider = build_macro_calendar_provider(settings)
-        except ProviderConfigurationError:
-            app.state.market_data_provider = None
-            app.state.financial_data_provider = None
-            app.state.news_data_provider = None
-            app.state.company_events_provider = None
-            app.state.macro_calendar_provider = None
+        _initialize_provider_state(app.state, settings)
 
     yield
 
@@ -90,6 +79,21 @@ async def lifespan(app: FastAPI):
 
 def get_analysis_report_repository(request: Request) -> AnalysisReportRepository:
     return request.app.state.analysis_report_repository
+
+
+def _initialize_provider_state(state: Any, settings: Settings) -> None:
+    state.market_data_provider = _build_optional_provider(build_market_data_provider, settings)
+    state.financial_data_provider = _build_optional_provider(build_financial_data_provider, settings)
+    state.news_data_provider = _build_optional_provider(build_news_data_provider, settings)
+    state.company_events_provider = _build_optional_provider(build_company_events_provider, settings)
+    state.macro_calendar_provider = _build_optional_provider(build_macro_calendar_provider, settings)
+
+
+def _build_optional_provider(factory, settings: Settings) -> Any:
+    try:
+        return factory(settings)
+    except ProviderConfigurationError:
+        return None
 
 
 def _build_error_response(

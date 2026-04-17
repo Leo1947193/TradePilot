@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+import app.api.main as main_module
 from app.api.main import app, get_analysis_report_repository
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.api import AnalysisResponse
 from app.services.providers.dtos import (
@@ -271,3 +273,32 @@ def test_openapi_exposes_only_the_business_endpoint() -> None:
     schema = app.openapi()
 
     assert list(schema["paths"]) == ["/api/v1/analyses"]
+
+
+def test_initialize_provider_state_keeps_available_providers_when_some_are_unconfigured(
+    monkeypatch,
+) -> None:
+    settings = Settings(postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot")
+    state = SimpleNamespace()
+
+    monkeypatch.setattr(main_module, "build_market_data_provider", lambda settings: "market")
+    monkeypatch.setattr(main_module, "build_financial_data_provider", lambda settings: "financial")
+    monkeypatch.setattr(
+        main_module,
+        "build_news_data_provider",
+        lambda settings: (_ for _ in ()).throw(main_module.ProviderConfigurationError("missing news")),
+    )
+    monkeypatch.setattr(main_module, "build_company_events_provider", lambda settings: "company")
+    monkeypatch.setattr(
+        main_module,
+        "build_macro_calendar_provider",
+        lambda settings: (_ for _ in ()).throw(main_module.ProviderConfigurationError("missing macro")),
+    )
+
+    main_module._initialize_provider_state(state, settings)
+
+    assert state.market_data_provider == "market"
+    assert state.financial_data_provider == "financial"
+    assert state.news_data_provider is None
+    assert state.company_events_provider == "company"
+    assert state.macro_calendar_provider is None
