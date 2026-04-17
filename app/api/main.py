@@ -22,6 +22,7 @@ from app.services.providers.factory import (
     build_financial_data_provider,
     build_market_data_provider,
     build_macro_calendar_provider,
+    build_news_data_provider,
 )
 
 
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.market_data_provider = None
     app.state.financial_data_provider = None
+    app.state.news_data_provider = None
     app.state.company_events_provider = None
     app.state.macro_calendar_provider = None
 
@@ -69,11 +71,13 @@ async def lifespan(app: FastAPI):
         try:
             app.state.market_data_provider = build_market_data_provider(settings)
             app.state.financial_data_provider = build_financial_data_provider(settings)
+            app.state.news_data_provider = build_news_data_provider(settings)
             app.state.company_events_provider = build_company_events_provider(settings)
             app.state.macro_calendar_provider = build_macro_calendar_provider(settings)
         except ProviderConfigurationError:
             app.state.market_data_provider = None
             app.state.financial_data_provider = None
+            app.state.news_data_provider = None
             app.state.company_events_provider = None
             app.state.macro_calendar_provider = None
 
@@ -184,6 +188,7 @@ async def create_analysis(
         repository,
         market_data_provider=request.app.state.market_data_provider,
         financial_data_provider=request.app.state.financial_data_provider,
+        news_data_provider=request.app.state.news_data_provider,
         company_events_provider=request.app.state.company_events_provider,
         macro_calendar_provider=request.app.state.macro_calendar_provider,
     )

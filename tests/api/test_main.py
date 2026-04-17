@@ -9,8 +9,14 @@ from app.api.main import app, get_analysis_report_repository
 from app.config import get_settings
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.api import AnalysisResponse
-from app.services.providers.dtos import CompanyEvent, MacroCalendarEvent, ProviderSourceRef
-from app.services.providers.dtos import FinancialSnapshot, MarketBar
+from app.services.providers.dtos import (
+    CompanyEvent,
+    FinancialSnapshot,
+    MacroCalendarEvent,
+    MarketBar,
+    NewsArticle,
+    ProviderSourceRef,
+)
 
 
 @dataclass
@@ -105,6 +111,26 @@ class FakeFinancialDataProvider:
         )
 
 
+class FakeNewsDataProvider:
+    async def get_company_news(self, symbol: str, *, limit: int) -> list[NewsArticle]:
+        return [
+            NewsArticle(
+                symbol=symbol,
+                title=f"{symbol} trades quietly before catalyst",
+                published_at=datetime(2026, 4, 17, 11, 30, tzinfo=UTC),
+                source_name="Example News",
+                url="https://example.com/news",
+                summary="Coverage remains balanced ahead of the next catalyst.",
+                category="company",
+                source=ProviderSourceRef(
+                    name="news-data-provider",
+                    url="https://example.com/news",
+                    fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                ),
+            )
+        ]
+
+
 def make_client() -> TestClient:
     get_settings.cache_clear()
     return TestClient(app)
@@ -193,6 +219,22 @@ def test_valid_request_uses_market_and_financial_providers_when_present_on_app_s
         "market-data-provider",
         "financial-data-provider",
     ]
+
+
+def test_valid_request_uses_news_provider_when_present_on_app_state() -> None:
+    repository = FakeAnalysisReportRepository()
+    app.dependency_overrides[get_analysis_report_repository] = lambda: repository
+
+    try:
+        with make_client() as client:
+            client.app.state.news_data_provider = FakeNewsDataProvider()
+            response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = AnalysisResponse.model_validate(response.json())
+    assert [source.name for source in payload.sources] == ["news-data-provider"]
 
 
 def test_missing_ticker_returns_documented_400_error_shape() -> None:
