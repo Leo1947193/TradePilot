@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.graph.nodes.run_technical import (
     TECHNICAL_DEGRADED_REASON,
     TECHNICAL_DEGRADED_SUMMARY,
     TECHNICAL_DEGRADED_WARNING,
+    TECHNICAL_USABLE_SUMMARY,
     run_technical,
 )
+from app.services.providers.dtos import MarketBar, ProviderSourceRef
 from app.schemas.modules import AnalysisModuleName, ModuleExecutionStatus
 
 
@@ -87,3 +91,112 @@ def test_run_technical_is_idempotent_for_diagnostics_markers() -> None:
     assert second_run.diagnostics.warnings == [TECHNICAL_DEGRADED_WARNING]
     assert second_run.module_results.technical is not None
     assert second_run.module_results.technical.status == ModuleExecutionStatus.DEGRADED
+
+
+class FakeMarketDataProvider:
+    def __init__(self, bars: list[MarketBar] | None = None, error: Exception | None = None) -> None:
+        self.bars = bars or []
+        self.error = error
+        self.calls: list[tuple[str, int]] = []
+
+    async def get_daily_bars(self, symbol: str, *, lookback_days: int) -> list[MarketBar]:
+        self.calls.append((symbol, lookback_days))
+        if self.error is not None:
+            raise self.error
+        return self.bars
+
+    async def get_benchmark_bars(self, symbol: str, *, lookback_days: int) -> list[MarketBar]:
+        return []
+
+
+def make_market_bar() -> MarketBar:
+    return MarketBar(
+        symbol="AAPL",
+        timestamp=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+        open=190.0,
+        high=193.0,
+        low=189.0,
+        close=192.0,
+        volume=1000000,
+        source=ProviderSourceRef(
+            name="yfinance",
+            url="https://finance.yahoo.com/quote/AAPL/history",
+            fetched_at=datetime(2026, 4, 17, 12, 5, tzinfo=UTC),
+        ),
+    )
+
+
+def test_run_technical_provider_backed_path_writes_usable_result() -> None:
+    provider = FakeMarketDataProvider(bars=[make_market_bar()])
+
+    state = run_technical(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_provider",
+            "context": {"analysis_window_days": [7, 90]},
+        },
+        market_data_provider=provider,
+    )
+
+    assert provider.calls == [("AAPL", 90)]
+    assert state.module_results.technical is not None
+    assert state.module_results.technical.status == ModuleExecutionStatus.USABLE
+    assert state.module_results.technical.direction == "neutral"
+    assert state.module_results.technical.summary == TECHNICAL_USABLE_SUMMARY
+    assert state.module_results.technical.low_confidence is False
+    assert state.diagnostics.degraded_modules == []
+    assert state.diagnostics.warnings == []
+
+
+def test_run_technical_provider_backed_path_appends_source_once() -> None:
+    provider = FakeMarketDataProvider(bars=[make_market_bar()])
+
+    state = run_technical(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_source",
+            "context": {"analysis_window_days": [7, 90]},
+            "sources": [
+                {
+                    "type": "technical",
+                    "name": "yfinance",
+                    "url": "https://finance.yahoo.com/quote/AAPL/history",
+                }
+            ],
+        },
+        market_data_provider=provider,
+    )
+
+    assert len(state.sources) == 1
+    assert state.sources[0].name == "yfinance"
+
+
+def test_run_technical_provider_errors_or_empty_data_fall_back_to_degraded() -> None:
+    empty_provider = FakeMarketDataProvider(bars=[])
+    error_provider = FakeMarketDataProvider(error=RuntimeError("upstream failed"))
+
+    empty_state = run_technical(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_empty",
+            "context": {"analysis_window_days": [7, 90]},
+        },
+        market_data_provider=empty_provider,
+    )
+    error_state = run_technical(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_error",
+            "context": {"analysis_window_days": [7, 90]},
+        },
+        market_data_provider=error_provider,
+    )
+
+    assert empty_state.module_results.technical is not None
+    assert empty_state.module_results.technical.status == ModuleExecutionStatus.DEGRADED
+    assert error_state.module_results.technical is not None
+    assert error_state.module_results.technical.status == ModuleExecutionStatus.DEGRADED
