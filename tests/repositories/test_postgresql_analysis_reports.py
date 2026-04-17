@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.graph.nodes.assemble_response import assemble_response
 from app.graph.nodes.generate_trade_plan import generate_trade_plan
@@ -12,13 +14,17 @@ from app.graph.nodes.run_sentiment import run_sentiment
 from app.graph.nodes.run_technical import run_technical
 from app.graph.nodes.synthesize_decision import synthesize_decision
 from app.graph.nodes.validate_request import validate_request
+from app.repositories.analysis_reports import AnalysisReportPayload
 from app.repositories.postgresql_analysis_reports import (
     INSERT_ANALYSIS_MODULE_REPORT_SQL,
     INSERT_ANALYSIS_REPORT_SQL,
     INSERT_ANALYSIS_SOURCE_SQL,
     PostgreSQLAnalysisReportRepository,
+    SELECT_ANALYSIS_REPORT_BY_ID_SQL,
+    SELECT_ANALYSIS_REPORTS_BY_TICKER_SQL,
+    SELECT_LATEST_ANALYSIS_REPORT_BY_TICKER_SQL,
 )
-from app.repositories.analysis_reports import AnalysisReportPayload
+from app.schemas.api import AnalysisResponse
 
 
 def build_payload() -> AnalysisReportPayload:
@@ -64,11 +70,25 @@ def build_payload() -> AnalysisReportPayload:
 
 
 class FakeCursor:
-    def __init__(self, executed: list[tuple[str, dict[str, object]]]) -> None:
+    def __init__(
+        self,
+        executed: list[tuple[str, dict[str, object], dict[str, Any]]],
+        *,
+        fetchone_result: dict[str, Any] | None = None,
+        fetchall_result: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.executed = executed
+        self.fetchone_result = fetchone_result
+        self.fetchall_result = fetchall_result or []
 
     def execute(self, sql: str, params: dict[str, object]) -> None:
-        self.executed.append((" ".join(sql.split()), params))
+        self.executed.append((" ".join(sql.split()), params, {}))
+
+    def fetchone(self) -> dict[str, Any] | None:
+        return self.fetchone_result
+
+    def fetchall(self) -> list[dict[str, Any]]:
+        return list(self.fetchall_result)
 
     def __enter__(self) -> "FakeCursor":
         return self
@@ -91,12 +111,23 @@ class FakeTransaction:
 
 
 class FakeConnection:
-    def __init__(self) -> None:
-        self.executed: list[tuple[str, dict[str, object]]] = []
+    def __init__(
+        self,
+        *,
+        fetchone_result: dict[str, Any] | None = None,
+        fetchall_result: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self.executed: list[tuple[str, dict[str, object], dict[str, Any]]] = []
         self.transaction_markers: list[str] = []
+        self.fetchone_result = fetchone_result
+        self.fetchall_result = fetchall_result or []
 
-    def cursor(self) -> FakeCursor:
-        return FakeCursor(self.executed)
+    def cursor(self, **kwargs: Any) -> FakeCursor:
+        return FakeCursor(
+            self.executed,
+            fetchone_result=self.fetchone_result,
+            fetchall_result=self.fetchall_result,
+        )
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction(self.transaction_markers)
@@ -173,3 +204,83 @@ def test_save_analysis_report_maps_key_payload_fields_to_sql_params() -> None:
     assert first_module_params["module_name"] == "technical"
     assert first_module_params["status"] == payload.module_results.technical.status.value
     assert first_module_params["summary"] == payload.module_results.technical.summary
+
+
+def test_get_analysis_report_returns_mapped_report_or_none() -> None:
+    payload = build_payload()
+    connection = FakeConnection(fetchone_result=build_report_row(payload, report_id="report_1"))
+    repository = PostgreSQLAnalysisReportRepository(FakePool(connection))
+
+    report = repository.get_analysis_report("report_1")
+
+    assert report is not None
+    assert report.report_id == "report_1"
+    assert report.normalized_ticker == "AAPL"
+    assert report.response.ticker == "AAPL"
+    assert connection.executed[0][0] == " ".join(SELECT_ANALYSIS_REPORT_BY_ID_SQL.split())
+    assert connection.executed[0][1] == {"report_id": "report_1"}
+
+    missing_repository = PostgreSQLAnalysisReportRepository(FakePool(FakeConnection()))
+    assert missing_repository.get_analysis_report("missing") is None
+
+
+def test_list_reports_by_ticker_applies_ticker_and_limit() -> None:
+    payload = build_payload()
+    rows = [
+        build_report_row(payload, report_id="report_2"),
+        build_report_row(
+            payload,
+            report_id="report_1",
+            analysis_time=payload.analysis_time - timedelta(days=1),
+        ),
+    ]
+    connection = FakeConnection(fetchall_result=rows)
+    repository = PostgreSQLAnalysisReportRepository(FakePool(connection))
+
+    reports = repository.list_reports_by_ticker("aapl", limit=5)
+
+    assert [report.report_id for report in reports] == ["report_2", "report_1"]
+    assert connection.executed[0][0] == " ".join(SELECT_ANALYSIS_REPORTS_BY_TICKER_SQL.split())
+    assert connection.executed[0][1] == {"ticker": "AAPL", "limit": 5}
+
+
+def test_get_latest_report_by_ticker_returns_latest_row_or_none() -> None:
+    payload = build_payload()
+    connection = FakeConnection(fetchone_result=build_report_row(payload, report_id="report_latest"))
+    repository = PostgreSQLAnalysisReportRepository(FakePool(connection))
+
+    report = repository.get_latest_report_by_ticker("aapl")
+
+    assert report is not None
+    assert report.report_id == "report_latest"
+    assert connection.executed[0][0] == " ".join(SELECT_LATEST_ANALYSIS_REPORT_BY_TICKER_SQL.split())
+    assert connection.executed[0][1] == {"ticker": "AAPL"}
+
+    missing_repository = PostgreSQLAnalysisReportRepository(FakePool(FakeConnection()))
+    assert missing_repository.get_latest_report_by_ticker("AAPL") is None
+
+
+def build_report_row(
+    payload: AnalysisReportPayload,
+    *,
+    report_id: str,
+    analysis_time: datetime | None = None,
+) -> dict[str, Any]:
+    persisted_at = datetime(2026, 4, 17, 12, 0, tzinfo=UTC)
+    response = AnalysisResponse.model_validate(payload.response.model_dump(mode="json"))
+    decision = payload.decision_synthesis.model_dump(mode="json")
+    trade_plan = payload.trade_plan.model_dump(mode="json")
+    return {
+        "id": report_id,
+        "request_id": payload.request_id,
+        "ticker": payload.normalized_ticker,
+        "raw_ticker": payload.raw_ticker,
+        "analysis_time": analysis_time or payload.analysis_time,
+        "overall_bias": payload.decision_synthesis.overall_bias.value,
+        "actionability_state": payload.decision_synthesis.actionability_state.value,
+        "response_json": response.model_dump(mode="json"),
+        "decision_synthesis_json": decision,
+        "trade_plan_json": trade_plan,
+        "created_at": persisted_at,
+        "updated_at": persisted_at,
+    }

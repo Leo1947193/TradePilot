@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, Mapping
 from uuid import uuid4
 
+from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
+from app.repositories.analysis_reports import (
+    AnalysisReportPayload,
+    PersistedAnalysisRecord,
+    PersistedAnalysisReport,
+)
+from app.schemas.api import AnalysisResponse, DecisionSynthesis, TradePlan
 
 
 STORAGE_SCHEMA_VERSION = "v1"
@@ -123,6 +130,64 @@ INSERT INTO analysis_sources (
 )
 """.strip()
 
+SELECT_ANALYSIS_REPORT_BY_ID_SQL = """
+SELECT
+    id,
+    request_id,
+    ticker,
+    raw_ticker,
+    analysis_time,
+    overall_bias,
+    actionability_state,
+    response_json,
+    decision_synthesis_json,
+    trade_plan_json,
+    created_at,
+    updated_at
+FROM analysis_reports
+WHERE id = %(report_id)s
+""".strip()
+
+SELECT_ANALYSIS_REPORTS_BY_TICKER_SQL = """
+SELECT
+    id,
+    request_id,
+    ticker,
+    raw_ticker,
+    analysis_time,
+    overall_bias,
+    actionability_state,
+    response_json,
+    decision_synthesis_json,
+    trade_plan_json,
+    created_at,
+    updated_at
+FROM analysis_reports
+WHERE ticker = %(ticker)s
+ORDER BY analysis_time DESC
+LIMIT %(limit)s
+""".strip()
+
+SELECT_LATEST_ANALYSIS_REPORT_BY_TICKER_SQL = """
+SELECT
+    id,
+    request_id,
+    ticker,
+    raw_ticker,
+    analysis_time,
+    overall_bias,
+    actionability_state,
+    response_json,
+    decision_synthesis_json,
+    trade_plan_json,
+    created_at,
+    updated_at
+FROM analysis_reports
+WHERE ticker = %(ticker)s
+ORDER BY analysis_time DESC
+LIMIT 1
+""".strip()
+
 MODULE_ORDER = {
     "technical": 1,
     "fundamental": 2,
@@ -156,6 +221,43 @@ class PostgreSQLAnalysisReportRepository:
                         cursor.execute(INSERT_ANALYSIS_SOURCE_SQL, row)
 
         return PersistedAnalysisRecord(record_id=report_id, persisted_at=persisted_at)
+
+    def get_analysis_report(self, report_id: str) -> PersistedAnalysisReport | None:
+        with self._pool.connection() as connection:
+            with connection.cursor(row_factory=dict_row) as cursor:
+                cursor.execute(
+                    SELECT_ANALYSIS_REPORT_BY_ID_SQL,
+                    {"report_id": report_id},
+                )
+                row = cursor.fetchone()
+
+        return None if row is None else _map_persisted_report(row)
+
+    def list_reports_by_ticker(
+        self,
+        ticker: str,
+        limit: int = 20,
+    ) -> list[PersistedAnalysisReport]:
+        with self._pool.connection() as connection:
+            with connection.cursor(row_factory=dict_row) as cursor:
+                cursor.execute(
+                    SELECT_ANALYSIS_REPORTS_BY_TICKER_SQL,
+                    {"ticker": ticker.upper(), "limit": limit},
+                )
+                rows = cursor.fetchall()
+
+        return [_map_persisted_report(row) for row in rows]
+
+    def get_latest_report_by_ticker(self, ticker: str) -> PersistedAnalysisReport | None:
+        with self._pool.connection() as connection:
+            with connection.cursor(row_factory=dict_row) as cursor:
+                cursor.execute(
+                    SELECT_LATEST_ANALYSIS_REPORT_BY_TICKER_SQL,
+                    {"ticker": ticker.upper()},
+                )
+                row = cursor.fetchone()
+
+        return None if row is None else _map_persisted_report(row)
 
     def _build_report_row(
         self,
@@ -261,3 +363,20 @@ def _module_risk_flags(module_result) -> list[str]:
     if module_result.reason:
         flags.append(module_result.reason)
     return flags
+
+
+def _map_persisted_report(row: Mapping[str, Any]) -> PersistedAnalysisReport:
+    return PersistedAnalysisReport(
+        report_id=str(row["id"]),
+        request_id=str(row["request_id"]),
+        normalized_ticker=str(row["ticker"]),
+        raw_ticker=str(row["raw_ticker"]),
+        analysis_time=row["analysis_time"],
+        overall_bias=str(row["overall_bias"]),
+        actionability_state=str(row["actionability_state"]),
+        response=AnalysisResponse.model_validate(row["response_json"]),
+        decision_synthesis=DecisionSynthesis.model_validate(row["decision_synthesis_json"]),
+        trade_plan=TradePlan.model_validate(row["trade_plan_json"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
