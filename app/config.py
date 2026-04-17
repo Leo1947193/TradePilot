@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     postgres_min_pool_size: int = Field(default=1, ge=1)
     postgres_max_pool_size: int = Field(default=10, ge=1)
     postgres_connect_timeout_seconds: float = Field(default=5.0, gt=0)
+    news_api_key: str | None = None
+    market_data_provider: str = "yfinance"
+    news_provider: str = "finnhub"
+    macro_calendar_path: str | None = None
+    request_timeout_seconds: float = Field(default=8.0, gt=0)
 
 
 @lru_cache(maxsize=1)
