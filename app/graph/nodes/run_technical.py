@@ -4,10 +4,10 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
+from app.analysis.technical import analyze_market_bars
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
-    AnalysisDirection,
     AnalysisModuleName,
     AnalysisModuleResult,
     ModuleExecutionStatus,
@@ -18,7 +18,6 @@ from app.services.providers.interfaces import MarketDataProvider
 TECHNICAL_DEGRADED_SUMMARY = "Technical analysis is degraded because provider-backed market data is not available yet."
 TECHNICAL_DEGRADED_REASON = "technical module placeholder until provider integration is implemented"
 TECHNICAL_DEGRADED_WARNING = "Technical analysis degraded: provider-backed market data is not available yet."
-TECHNICAL_USABLE_SUMMARY = "Technical analysis has provider-backed market bars, but the current V1 placeholder keeps the signal neutral until full rules are implemented."
 
 AwaitableT = TypeVar("AwaitableT")
 
@@ -94,13 +93,15 @@ def _try_provider_backed_result(
     if not bars:
         return None
 
+    technical_signal = analyze_market_bars(bars)
+
     technical_result = AnalysisModuleResult(
         module=AnalysisModuleName.TECHNICAL,
         status=ModuleExecutionStatus.USABLE,
-        summary=TECHNICAL_USABLE_SUMMARY,
-        direction=AnalysisDirection.NEUTRAL,
-        data_completeness_pct=100.0,
-        low_confidence=False,
+        summary=technical_signal.summary,
+        direction=technical_signal.direction,
+        data_completeness_pct=technical_signal.data_completeness_pct,
+        low_confidence=technical_signal.low_confidence,
         reason=None,
     )
 

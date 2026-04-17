@@ -6,7 +6,6 @@ from app.graph.nodes.run_technical import (
     TECHNICAL_DEGRADED_REASON,
     TECHNICAL_DEGRADED_SUMMARY,
     TECHNICAL_DEGRADED_WARNING,
-    TECHNICAL_USABLE_SUMMARY,
     run_technical,
 )
 from app.services.providers.dtos import MarketBar, ProviderSourceRef
@@ -109,14 +108,21 @@ class FakeMarketDataProvider:
         return []
 
 
-def make_market_bar() -> MarketBar:
+def make_market_bar(
+    *,
+    day: int,
+    open_price: float,
+    high: float,
+    low: float,
+    close: float,
+) -> MarketBar:
     return MarketBar(
         symbol="AAPL",
-        timestamp=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
-        open=190.0,
-        high=193.0,
-        low=189.0,
-        close=192.0,
+        timestamp=datetime(2026, 4, day, 12, 0, tzinfo=UTC),
+        open=open_price,
+        high=high,
+        low=low,
+        close=close,
         volume=1000000,
         source=ProviderSourceRef(
             name="yfinance",
@@ -127,7 +133,13 @@ def make_market_bar() -> MarketBar:
 
 
 def test_run_technical_provider_backed_path_writes_usable_result() -> None:
-    provider = FakeMarketDataProvider(bars=[make_market_bar()])
+    provider = FakeMarketDataProvider(
+        bars=[
+            make_market_bar(day=15, open_price=188.0, high=190.0, low=187.0, close=189.0),
+            make_market_bar(day=16, open_price=190.0, high=193.0, low=189.0, close=192.0),
+            make_market_bar(day=17, open_price=192.0, high=196.0, low=191.0, close=195.0),
+        ]
+    )
 
     state = run_technical(
         {
@@ -142,15 +154,21 @@ def test_run_technical_provider_backed_path_writes_usable_result() -> None:
     assert provider.calls == [("AAPL", 90)]
     assert state.module_results.technical is not None
     assert state.module_results.technical.status == ModuleExecutionStatus.USABLE
-    assert state.module_results.technical.direction == "neutral"
-    assert state.module_results.technical.summary == TECHNICAL_USABLE_SUMMARY
+    assert state.module_results.technical.direction == "bullish"
+    assert state.module_results.technical.summary == (
+        "Technical analysis reviewed 3 market bars. Price return over lookback: +3.17%. "
+        "Latest close is above the short moving average, producing a bullish bias."
+    )
+    assert state.module_results.technical.data_completeness_pct == 5.0
     assert state.module_results.technical.low_confidence is False
     assert state.diagnostics.degraded_modules == []
     assert state.diagnostics.warnings == []
 
 
 def test_run_technical_provider_backed_path_appends_source_once() -> None:
-    provider = FakeMarketDataProvider(bars=[make_market_bar()])
+    provider = FakeMarketDataProvider(
+        bars=[make_market_bar(day=17, open_price=190.0, high=193.0, low=189.0, close=192.0)]
+    )
 
     state = run_technical(
         {
