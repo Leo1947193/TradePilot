@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
+from app.config import get_settings
+from app.db.pool import close_connection_pool, create_connection_pool, open_connection_pool
 from app.graph.builder import build_analysis_graph
 from app.repositories.analysis_reports import AnalysisReportRepository
+from app.repositories.postgresql_analysis_reports import PostgreSQLAnalysisReportRepository
 from app.schemas.api import AnalyzeRequest, AnalysisResponse, ErrorDetail, ErrorObject, ErrorResponse
 from app.schemas.graph_state import TradePilotState
 
@@ -19,13 +24,46 @@ class RepositoryUnavailableError(RuntimeError):
 
 
 class UnavailableAnalysisReportRepository:
+    def __init__(self, message: str = "analysis report repository is unavailable") -> None:
+        self._message = message
+
     def save_analysis_report(self, payload: Any) -> Any:
         del payload
-        raise RepositoryUnavailableError()
+        raise RepositoryUnavailableError(self._message)
 
 
-def get_analysis_report_repository() -> AnalysisReportRepository:
-    return UnavailableAnalysisReportRepository()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.postgres_pool = None
+    app.state.analysis_report_repository = UnavailableAnalysisReportRepository(
+        "analysis report repository is unavailable"
+    )
+
+    try:
+        settings = get_settings()
+    except ValidationError:
+        settings = None
+
+    if settings is not None:
+        try:
+            pool = open_connection_pool(create_connection_pool(settings))
+        except Exception:
+            app.state.analysis_report_repository = UnavailableAnalysisReportRepository(
+                "analysis report repository is unavailable"
+            )
+        else:
+            app.state.postgres_pool = pool
+            app.state.analysis_report_repository = PostgreSQLAnalysisReportRepository(pool)
+
+    yield
+
+    pool = getattr(app.state, "postgres_pool", None)
+    if pool is not None:
+        close_connection_pool(pool)
+
+
+def get_analysis_report_repository(request: Request) -> AnalysisReportRepository:
+    return request.app.state.analysis_report_repository
 
 
 def _build_error_response(
@@ -85,6 +123,7 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 

@@ -6,11 +6,9 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 
 from app.api.main import app, get_analysis_report_repository
+from app.config import get_settings
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.api import AnalysisResponse
-
-
-client = TestClient(app)
 
 
 @dataclass
@@ -23,6 +21,11 @@ class FakeAnalysisReportRepository:
             record_id="report_api_123",
             persisted_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
         )
+
+
+def make_client() -> TestClient:
+    get_settings.cache_clear()
+    return TestClient(app)
 
 
 def test_post_analyses_route_exists() -> None:
@@ -39,7 +42,8 @@ def test_post_analyses_route_exists() -> None:
 
 
 def test_valid_request_returns_documented_503_when_repository_is_unavailable() -> None:
-    response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+    with make_client() as client:
+        response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
 
     assert response.status_code == 503
     assert response.json() == {
@@ -55,7 +59,8 @@ def test_valid_request_returns_200_with_dependency_override() -> None:
     app.dependency_overrides[get_analysis_report_repository] = lambda: repository
 
     try:
-        response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+        with make_client() as client:
+            response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
     finally:
         app.dependency_overrides.clear()
 
@@ -69,7 +74,8 @@ def test_valid_request_returns_200_with_dependency_override() -> None:
 
 
 def test_missing_ticker_returns_documented_400_error_shape() -> None:
-    response = client.post("/api/v1/analyses", json={})
+    with make_client() as client:
+        response = client.post("/api/v1/analyses", json={})
 
     assert response.status_code == 400
     assert response.json() == {
@@ -83,7 +89,8 @@ def test_missing_ticker_returns_documented_400_error_shape() -> None:
 
 
 def test_extra_field_returns_documented_400_error_shape() -> None:
-    response = client.post("/api/v1/analyses", json={"ticker": "AAPL", "exchange": "NASDAQ"})
+    with make_client() as client:
+        response = client.post("/api/v1/analyses", json={"ticker": "AAPL", "exchange": "NASDAQ"})
 
     assert response.status_code == 400
     assert response.json() == {
