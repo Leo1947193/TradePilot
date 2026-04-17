@@ -7,7 +7,14 @@ import json
 import pytest
 
 from app.config import Settings
-from app.services.providers.factory import ProviderConfigurationError, build_macro_calendar_provider
+from app.services.providers.factory import (
+    ProviderConfigurationError,
+    build_company_events_provider,
+    build_financial_data_provider,
+    build_macro_calendar_provider,
+    build_market_data_provider,
+)
+from app.services.providers.yfinance_provider import YFinanceProvider
 
 
 def test_settings_include_provider_env_vars(monkeypatch) -> None:
@@ -66,3 +73,28 @@ def test_build_macro_calendar_provider_returns_working_static_provider(tmp_path)
     assert len(events) == 1
     assert events[0].event_name == "CPI"
     assert events[0].scheduled_at == datetime(2026, 4, 19, 12, 30, tzinfo=UTC)
+
+
+def test_factory_builds_yfinance_backed_default_providers() -> None:
+    settings = Settings(
+        postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
+        market_data_provider="yfinance",
+    )
+
+    market_provider = build_market_data_provider(settings)
+    financial_provider = build_financial_data_provider(settings)
+    company_events_provider = build_company_events_provider(settings)
+
+    assert isinstance(market_provider, YFinanceProvider)
+    assert isinstance(financial_provider, YFinanceProvider)
+    assert isinstance(company_events_provider, YFinanceProvider)
+
+
+def test_factory_rejects_unsupported_market_data_provider() -> None:
+    settings = Settings(
+        postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
+        market_data_provider="unsupported",
+    )
+
+    with pytest.raises(ProviderConfigurationError, match="unsupported MARKET_DATA_PROVIDER"):
+        build_market_data_provider(settings)
