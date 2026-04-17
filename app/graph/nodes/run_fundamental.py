@@ -4,10 +4,10 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
+from app.analysis.fundamental import analyze_financial_snapshot
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
-    AnalysisDirection,
     AnalysisModuleName,
     AnalysisModuleResult,
     ModuleExecutionStatus,
@@ -23,9 +23,6 @@ FUNDAMENTAL_DEGRADED_REASON = (
 )
 FUNDAMENTAL_DEGRADED_WARNING = (
     "Fundamental analysis degraded: provider-backed financial data is not available yet."
-)
-FUNDAMENTAL_USABLE_SUMMARY = (
-    "Fundamental analysis has provider-backed financial snapshot data, but the current V1 placeholder keeps the signal neutral until full rules are implemented."
 )
 
 AwaitableT = TypeVar("AwaitableT")
@@ -96,13 +93,15 @@ def _try_provider_backed_result(
     if snapshot is None:
         return None
 
+    fundamental_signal = analyze_financial_snapshot(snapshot)
+
     fundamental_result = AnalysisModuleResult(
         module=AnalysisModuleName.FUNDAMENTAL,
         status=ModuleExecutionStatus.USABLE,
-        summary=_build_usable_summary(snapshot),
-        direction=AnalysisDirection.NEUTRAL,
-        data_completeness_pct=100.0,
-        low_confidence=False,
+        summary=fundamental_signal.summary,
+        direction=fundamental_signal.direction,
+        data_completeness_pct=fundamental_signal.data_completeness_pct,
+        low_confidence=fundamental_signal.low_confidence,
         reason=None,
     )
 
@@ -144,22 +143,6 @@ def _try_provider_backed_result(
             "sources": updated_sources,
         }
     )
-
-
-def _build_usable_summary(snapshot) -> str:
-    summary_bits = [FUNDAMENTAL_USABLE_SUMMARY]
-    metrics: list[str] = []
-    if snapshot.market_cap is not None:
-        metrics.append(f"market cap {snapshot.market_cap:.0f}")
-    if snapshot.pe_ratio is not None:
-        metrics.append(f"PE {snapshot.pe_ratio:.2f}")
-    if snapshot.eps is not None:
-        metrics.append(f"EPS {snapshot.eps:.2f}")
-
-    if metrics:
-        summary_bits.append("Key fields: " + ", ".join(metrics) + ".")
-
-    return " ".join(summary_bits)
 
 
 def _run_awaitable(awaitable: Awaitable[AwaitableT]) -> AwaitableT:

@@ -6,7 +6,6 @@ from app.graph.nodes.run_fundamental import (
     FUNDAMENTAL_DEGRADED_REASON,
     FUNDAMENTAL_DEGRADED_SUMMARY,
     FUNDAMENTAL_DEGRADED_WARNING,
-    FUNDAMENTAL_USABLE_SUMMARY,
     run_fundamental,
 )
 from app.services.providers.dtos import FinancialSnapshot, ProviderSourceRef
@@ -145,8 +144,13 @@ def test_run_fundamental_provider_backed_path_writes_usable_result() -> None:
     assert provider.calls == ["AAPL"]
     assert state.module_results.fundamental is not None
     assert state.module_results.fundamental.status == ModuleExecutionStatus.USABLE
-    assert state.module_results.fundamental.direction == "neutral"
-    assert state.module_results.fundamental.summary.startswith(FUNDAMENTAL_USABLE_SUMMARY)
+    assert state.module_results.fundamental.direction == "bullish"
+    assert state.module_results.fundamental.summary == (
+        "Fundamental analysis reviewed 7 of 7 core fields and found a bullish bias "
+        "(positive signals: 5, negative signals: 0). Key fields: market cap 3000000000, "
+        "PE 28.20, EPS 6.50."
+    )
+    assert state.module_results.fundamental.data_completeness_pct == 100.0
     assert state.module_results.fundamental.low_confidence is False
     assert state.diagnostics.degraded_modules == []
     assert state.diagnostics.warnings == []
