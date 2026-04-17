@@ -112,3 +112,46 @@ def test_synthesize_decision_preserves_unrelated_state() -> None:
     assert state.sources[0].name == "placeholder"
     assert state.diagnostics.warnings[0] == "existing warning"
     assert state.module_results.technical is not None
+
+
+def test_synthesize_decision_promotes_weighted_usable_modules_to_actionable_bias() -> None:
+    state = synthesize_decision(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_weighted",
+            "module_results": {
+                "technical": {
+                    "status": "usable",
+                    "summary": "Trend remains constructive.",
+                    "direction": "bullish",
+                    "data_completeness_pct": 90,
+                },
+                "fundamental": {
+                    "status": "usable",
+                    "summary": "Profitability remains solid.",
+                    "direction": "bullish",
+                    "data_completeness_pct": 100,
+                },
+                "sentiment": {
+                    "status": "usable",
+                    "summary": "Coverage is balanced.",
+                    "direction": "neutral",
+                    "data_completeness_pct": 80,
+                },
+                "event": {
+                    "status": "usable",
+                    "summary": "No near-term blockers.",
+                    "direction": "neutral",
+                    "data_completeness_pct": 100,
+                },
+            },
+        }
+    )
+
+    assert state.decision_synthesis is not None
+    assert state.decision_synthesis.overall_bias == Direction.BULLISH
+    assert state.decision_synthesis.conflict_state == ConflictState.ALIGNED
+    assert state.decision_synthesis.actionability_state == TechnicalSetupState.ACTIONABLE
+    assert state.decision_synthesis.blocking_flags == []
+    assert state.decision_synthesis.confidence_score > 0.7

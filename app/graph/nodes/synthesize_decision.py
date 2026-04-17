@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from app.analysis.decision import analyze_decision_signal
 from app.schemas.api import (
     AppliedWeights,
     ConfiguredWeights,
-    ConflictState,
     DecisionSynthesis,
-    Direction,
     FundamentalBias,
     ModuleContribution,
     ModuleName,
@@ -78,7 +77,6 @@ def synthesize_decision(state: TradePilotState | dict) -> TradePilotState:
         sum(contribution.contribution or 0.0 for contribution in module_contributions),
         2,
     )
-    conflict_state = _determine_conflict_state(module_contributions)
     data_completeness_pct = round(
         _calculate_data_completeness_pct(enabled_modules, module_contributions, enabled_weight_sum),
         1,
@@ -91,16 +89,17 @@ def synthesize_decision(state: TradePilotState | dict) -> TradePilotState:
         and result_by_module[module].status == ModuleExecutionStatus.USABLE
     ]
 
+    decision_signal = analyze_decision_signal(
+        module_contributions,
+        available_weight_ratio=available_weight_ratio,
+        usable_module_count=len(usable_modules),
+    )
     decision_synthesis = DecisionSynthesis(
-        overall_bias=Direction.NEUTRAL,
+        overall_bias=decision_signal.overall_bias,
         bias_score=bias_score,
-        confidence_score=0.0 if not usable_modules else round(min(0.64, available_weight_ratio), 2),
-        actionability_state=(
-            TechnicalSetupState.AVOID
-            if not usable_modules
-            else TechnicalSetupState.WATCH
-        ),
-        conflict_state=conflict_state,
+        confidence_score=decision_signal.confidence_score,
+        actionability_state=decision_signal.actionability_state,
+        conflict_state=decision_signal.conflict_state,
         data_completeness_pct=data_completeness_pct,
         weight_scheme_used=WeightSchemeUsed(
             configured_weights=ConfiguredWeights(
@@ -124,7 +123,7 @@ def synthesize_decision(state: TradePilotState | dict) -> TradePilotState:
                 enabled_modules and any(module not in available_modules for module in enabled_modules)
             ),
         ),
-        blocking_flags=[],
+        blocking_flags=decision_signal.blocking_flags,
         module_contributions=module_contributions,
         risks=_build_risks(
             usable_modules=usable_modules,
@@ -223,27 +222,6 @@ def _resolve_data_completeness(result: AnalysisModuleResult) -> float | None:
     if result.status == ModuleExecutionStatus.DEGRADED:
         return DEGRADED_COMPLETENESS_PROXY
     return 100.0
-
-
-def _determine_conflict_state(
-    module_contributions: list[ModuleContribution],
-) -> ConflictState:
-    bullish_weight = sum(
-        contribution.applied_weight or 0.0
-        for contribution in module_contributions
-        if contribution.direction == FundamentalBias.BULLISH
-    )
-    bearish_weight = sum(
-        contribution.applied_weight or 0.0
-        for contribution in module_contributions
-        if contribution.direction in {FundamentalBias.BEARISH, FundamentalBias.DISQUALIFIED}
-    )
-
-    if bullish_weight == 0 or bearish_weight == 0:
-        return ConflictState.ALIGNED
-    if abs(bullish_weight - bearish_weight) >= 0.30:
-        return ConflictState.MIXED
-    return ConflictState.CONFLICTED
 
 
 def _calculate_data_completeness_pct(
