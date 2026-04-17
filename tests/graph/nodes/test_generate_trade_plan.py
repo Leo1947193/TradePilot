@@ -106,6 +106,26 @@ def test_generate_trade_plan_writes_valid_trade_plan() -> None:
     assert state.trade_plan.bearish_scenario.entry_idea
 
 
+def test_generate_trade_plan_uses_actionable_bias_for_primary_scenario() -> None:
+    state = generate_trade_plan(
+        {
+            "request": {"ticker": "AAPL"},
+            "request_id": "req_actionable",
+            "decision_synthesis": make_decision_payload(
+                overall_bias="bullish",
+                confidence_score=0.82,
+                actionability_state="actionable",
+            ),
+        }
+    )
+
+    assert state.trade_plan is not None
+    assert state.trade_plan.bullish_scenario.entry_idea == (
+        "Primary path favors long entries on a confirmed breakout or a constructive pullback retest."
+    )
+    assert state.trade_plan.do_not_trade_conditions == []
+
+
 def test_generate_trade_plan_copies_overall_bias_without_recomputing() -> None:
     state = generate_trade_plan(
         {
