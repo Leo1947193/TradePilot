@@ -19,6 +19,8 @@ from app.schemas.graph_state import TradePilotState
 from app.services.providers.factory import (
     ProviderConfigurationError,
     build_company_events_provider,
+    build_financial_data_provider,
+    build_market_data_provider,
     build_macro_calendar_provider,
 )
 
@@ -43,6 +45,8 @@ async def lifespan(app: FastAPI):
     app.state.analysis_report_repository = UnavailableAnalysisReportRepository(
         "analysis report repository is unavailable"
     )
+    app.state.market_data_provider = None
+    app.state.financial_data_provider = None
     app.state.company_events_provider = None
     app.state.macro_calendar_provider = None
 
@@ -63,9 +67,13 @@ async def lifespan(app: FastAPI):
             app.state.analysis_report_repository = PostgreSQLAnalysisReportRepository(pool)
 
         try:
+            app.state.market_data_provider = build_market_data_provider(settings)
+            app.state.financial_data_provider = build_financial_data_provider(settings)
             app.state.company_events_provider = build_company_events_provider(settings)
             app.state.macro_calendar_provider = build_macro_calendar_provider(settings)
         except ProviderConfigurationError:
+            app.state.market_data_provider = None
+            app.state.financial_data_provider = None
             app.state.company_events_provider = None
             app.state.macro_calendar_provider = None
 
@@ -174,6 +182,8 @@ async def create_analysis(
 ) -> AnalysisResponse | JSONResponse:
     graph = build_analysis_graph(
         repository,
+        market_data_provider=request.app.state.market_data_provider,
+        financial_data_provider=request.app.state.financial_data_provider,
         company_events_provider=request.app.state.company_events_provider,
         macro_calendar_provider=request.app.state.macro_calendar_provider,
     )

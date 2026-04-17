@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.api import AnalysisResponse
 from app.services.providers.dtos import CompanyEvent, MacroCalendarEvent, ProviderSourceRef
+from app.services.providers.dtos import FinancialSnapshot, MarketBar
 
 
 @dataclass
@@ -58,6 +59,50 @@ class FakeMacroCalendarProvider:
                 ),
             )
         ]
+
+
+class FakeMarketDataProvider:
+    async def get_daily_bars(self, symbol: str, *, lookback_days: int) -> list[MarketBar]:
+        return [
+            MarketBar(
+                symbol=symbol,
+                timestamp=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                open=190.0,
+                high=193.0,
+                low=189.0,
+                close=192.0,
+                volume=1000000,
+                source=ProviderSourceRef(
+                    name="market-data-provider",
+                    url="https://example.com/market-data",
+                    fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                ),
+            )
+        ]
+
+    async def get_benchmark_bars(self, symbol: str, *, lookback_days: int) -> list[MarketBar]:
+        return []
+
+
+class FakeFinancialDataProvider:
+    async def get_financial_snapshot(self, symbol: str) -> FinancialSnapshot | None:
+        return FinancialSnapshot(
+            symbol=symbol,
+            as_of_date=datetime(2026, 4, 17, 12, 0, tzinfo=UTC).date(),
+            currency="USD",
+            revenue=100000000.0,
+            net_income=25000000.0,
+            eps=6.5,
+            gross_margin_pct=46.0,
+            operating_margin_pct=31.0,
+            pe_ratio=28.2,
+            market_cap=3000000000.0,
+            source=ProviderSourceRef(
+                name="financial-data-provider",
+                url="https://example.com/financial-data",
+                fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+            ),
+        )
 
 
 def make_client() -> TestClient:
@@ -127,6 +172,26 @@ def test_valid_request_uses_event_providers_when_present_on_app_state() -> None:
     assert [source.name for source in payload.sources] == [
         "company-events-provider",
         "macro-calendar-provider",
+    ]
+
+
+def test_valid_request_uses_market_and_financial_providers_when_present_on_app_state() -> None:
+    repository = FakeAnalysisReportRepository()
+    app.dependency_overrides[get_analysis_report_repository] = lambda: repository
+
+    try:
+        with make_client() as client:
+            client.app.state.market_data_provider = FakeMarketDataProvider()
+            client.app.state.financial_data_provider = FakeFinancialDataProvider()
+            response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = AnalysisResponse.model_validate(response.json())
+    assert [source.name for source in payload.sources] == [
+        "market-data-provider",
+        "financial-data-provider",
     ]
 
 
