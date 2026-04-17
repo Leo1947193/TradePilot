@@ -15,7 +15,12 @@ from app.graph.nodes.run_technical import run_technical
 from app.graph.nodes.synthesize_decision import synthesize_decision
 from app.graph.nodes.validate_request import validate_request
 from app.repositories.analysis_reports import AnalysisReportRepository
-from app.services.providers.interfaces import CompanyEventsProvider, MacroCalendarProvider
+from app.services.providers.interfaces import (
+    CompanyEventsProvider,
+    FinancialDataProvider,
+    MacroCalendarProvider,
+    MarketDataProvider,
+)
 
 
 def _merge_dict_updates(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
@@ -41,6 +46,37 @@ def _merge_diagnostics(left: dict[str, Any] | None, right: dict[str, Any] | None
     return merged
 
 
+def _merge_sources(
+    left: list[dict[str, Any]] | None,
+    right: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    source_order = {
+        "technical": 0,
+        "financial": 1,
+        "news": 2,
+        "event": 3,
+        "macro": 4,
+    }
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[Any, Any, Any]] = set()
+
+    for payload in [*(left or []), *(right or [])]:
+        key = (payload.get("type"), payload.get("name"), str(payload.get("url")))
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(payload)
+
+    return sorted(
+        merged,
+        key=lambda payload: (
+            source_order.get(str(payload.get("type")), 99),
+            str(payload.get("name")),
+            str(payload.get("url")),
+        ),
+    )
+
+
 class AnalysisGraphState(TypedDict, total=False):
     request: dict[str, Any]
     normalized_ticker: str | None
@@ -51,7 +87,7 @@ class AnalysisGraphState(TypedDict, total=False):
     decision_synthesis: dict[str, Any] | None
     trade_plan: dict[str, Any] | None
     response: dict[str, Any] | None
-    sources: list[dict[str, Any]]
+    sources: Annotated[list[dict[str, Any]], _merge_sources]
     persistence: dict[str, Any]
     diagnostics: Annotated[dict[str, Any], _merge_diagnostics]
 
@@ -59,6 +95,8 @@ class AnalysisGraphState(TypedDict, total=False):
 def build_analysis_graph(
     repository: AnalysisReportRepository,
     *,
+    market_data_provider: MarketDataProvider | None = None,
+    financial_data_provider: FinancialDataProvider | None = None,
     company_events_provider: CompanyEventsProvider | None = None,
     macro_calendar_provider: MacroCalendarProvider | None = None,
 ):
@@ -66,8 +104,22 @@ def build_analysis_graph(
 
     graph.add_node("validate_request", _wrap_node(validate_request, "request", "normalized_ticker", "request_id"))
     graph.add_node("prepare_context", _wrap_node(prepare_context, "context"))
-    graph.add_node("run_technical", _wrap_module_node(run_technical, "technical"))
-    graph.add_node("run_fundamental", _wrap_module_node(run_fundamental, "fundamental"))
+    graph.add_node(
+        "run_technical",
+        _wrap_module_node(
+            lambda state: run_technical(state, market_data_provider=market_data_provider),
+            "technical",
+            include_sources=market_data_provider is not None,
+        ),
+    )
+    graph.add_node(
+        "run_fundamental",
+        _wrap_module_node(
+            lambda state: run_fundamental(state, financial_data_provider=financial_data_provider),
+            "fundamental",
+            include_sources=financial_data_provider is not None,
+        ),
+    )
     graph.add_node("run_sentiment", _wrap_module_node(run_sentiment, "sentiment"))
     graph.add_node(
         "run_event",

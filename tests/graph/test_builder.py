@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from app.graph.builder import build_analysis_graph
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.graph_state import PersistenceStatus, TradePilotState
-from app.services.providers.dtos import CompanyEvent, MacroCalendarEvent, ProviderSourceRef
+from app.services.providers.dtos import (
+    CompanyEvent,
+    FinancialSnapshot,
+    MacroCalendarEvent,
+    MarketBar,
+    ProviderSourceRef,
+)
 
 
 @dataclass
@@ -55,6 +61,50 @@ class FakeMacroCalendarProvider:
                 ),
             )
         ]
+
+
+class FakeMarketDataProvider:
+    async def get_daily_bars(self, symbol: str, *, lookback_days: int) -> list[MarketBar]:
+        return [
+            MarketBar(
+                symbol=symbol,
+                timestamp=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                open=190.0,
+                high=193.0,
+                low=189.0,
+                close=192.0,
+                volume=1000000,
+                source=ProviderSourceRef(
+                    name="market-data-provider",
+                    url="https://example.com/market-data",
+                    fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+                ),
+            )
+        ]
+
+    async def get_benchmark_bars(self, symbol: str, *, lookback_days: int) -> list[MarketBar]:
+        return []
+
+
+class FakeFinancialDataProvider:
+    async def get_financial_snapshot(self, symbol: str) -> FinancialSnapshot | None:
+        return FinancialSnapshot(
+            symbol=symbol,
+            as_of_date=date(2026, 4, 17),
+            currency="USD",
+            revenue=100000000.0,
+            net_income=25000000.0,
+            eps=6.5,
+            gross_margin_pct=46.0,
+            operating_margin_pct=31.0,
+            pe_ratio=28.2,
+            market_cap=3000000000.0,
+            source=ProviderSourceRef(
+                name="financial-data-provider",
+                url="https://example.com/financial-data",
+                fetched_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+            ),
+        )
 
 
 def test_build_analysis_graph_runs_end_to_end() -> None:
@@ -115,4 +165,25 @@ def test_build_analysis_graph_supports_provider_backed_event_node() -> None:
     assert [source.name for source in final_state.sources] == [
         "company-events-provider",
         "macro-calendar-provider",
+    ]
+
+
+def test_build_analysis_graph_supports_provider_backed_technical_and_fundamental_nodes() -> None:
+    repository = FakeAnalysisReportRepository()
+    graph = build_analysis_graph(
+        repository,
+        market_data_provider=FakeMarketDataProvider(),
+        financial_data_provider=FakeFinancialDataProvider(),
+    )
+
+    result = graph.invoke({"request": {"ticker": "aapl"}})
+    final_state = TradePilotState.model_validate(result)
+
+    assert final_state.module_results.technical is not None
+    assert final_state.module_results.technical.status.value == "usable"
+    assert final_state.module_results.fundamental is not None
+    assert final_state.module_results.fundamental.status.value == "usable"
+    assert [source.name for source in final_state.sources] == [
+        "market-data-provider",
+        "financial-data-provider",
     ]
