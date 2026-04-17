@@ -26,13 +26,17 @@ def persist_analysis(
 
     payload = AnalysisReportPayload(
         request_id=validated_state.request_id,
+        raw_ticker=validated_state.request.ticker,
         normalized_ticker=validated_state.normalized_ticker,
         analysis_time=validated_state.context.analysis_time,
         request=validated_state.request,
+        context=validated_state.context,
         module_results=validated_state.module_results,
         decision_synthesis=validated_state.decision_synthesis,
         trade_plan=validated_state.trade_plan,
         response=validated_state.response,
+        sources=validated_state.sources,
+        diagnostics=validated_state.diagnostics,
     )
 
     try:
