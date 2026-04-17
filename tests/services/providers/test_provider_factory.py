@@ -13,7 +13,9 @@ from app.services.providers.factory import (
     build_financial_data_provider,
     build_macro_calendar_provider,
     build_market_data_provider,
+    build_news_data_provider,
 )
+from app.services.providers.finnhub_news_provider import FinnhubNewsProvider
 from app.services.providers.yfinance_provider import YFinanceProvider
 
 
@@ -98,3 +100,37 @@ def test_factory_rejects_unsupported_market_data_provider() -> None:
 
     with pytest.raises(ProviderConfigurationError, match="unsupported MARKET_DATA_PROVIDER"):
         build_market_data_provider(settings)
+
+
+def test_factory_builds_finnhub_news_provider_when_configured() -> None:
+    settings = Settings(
+        postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
+        news_provider="finnhub",
+        news_api_key="demo-key",
+        request_timeout_seconds=12.0,
+    )
+
+    provider = build_news_data_provider(settings)
+
+    assert isinstance(provider, FinnhubNewsProvider)
+    assert provider._timeout_seconds == 12.0
+
+
+def test_factory_requires_news_api_key_for_finnhub() -> None:
+    settings = Settings(
+        postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
+        news_provider="finnhub",
+    )
+
+    with pytest.raises(ProviderConfigurationError, match="NEWS_API_KEY"):
+        build_news_data_provider(settings)
+
+
+def test_factory_rejects_unsupported_news_provider() -> None:
+    settings = Settings(
+        postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
+        news_provider="unsupported",
+    )
+
+    with pytest.raises(ProviderConfigurationError, match="unsupported NEWS_PROVIDER"):
+        build_news_data_provider(settings)
