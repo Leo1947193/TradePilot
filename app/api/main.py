@@ -16,6 +16,11 @@ from app.repositories.analysis_reports import AnalysisReportRepository
 from app.repositories.postgresql_analysis_reports import PostgreSQLAnalysisReportRepository
 from app.schemas.api import AnalyzeRequest, AnalysisResponse, ErrorDetail, ErrorObject, ErrorResponse
 from app.schemas.graph_state import TradePilotState
+from app.services.providers.factory import (
+    ProviderConfigurationError,
+    build_company_events_provider,
+    build_macro_calendar_provider,
+)
 
 
 @dataclass
@@ -38,6 +43,8 @@ async def lifespan(app: FastAPI):
     app.state.analysis_report_repository = UnavailableAnalysisReportRepository(
         "analysis report repository is unavailable"
     )
+    app.state.company_events_provider = None
+    app.state.macro_calendar_provider = None
 
     try:
         settings = get_settings()
@@ -54,6 +61,13 @@ async def lifespan(app: FastAPI):
         else:
             app.state.postgres_pool = pool
             app.state.analysis_report_repository = PostgreSQLAnalysisReportRepository(pool)
+
+        try:
+            app.state.company_events_provider = build_company_events_provider(settings)
+            app.state.macro_calendar_provider = build_macro_calendar_provider(settings)
+        except ProviderConfigurationError:
+            app.state.company_events_provider = None
+            app.state.macro_calendar_provider = None
 
     yield
 
@@ -154,13 +168,18 @@ async def handle_request_validation_error(
     },
 )
 async def create_analysis(
-    request: AnalyzeRequest,
+    analyze_request: AnalyzeRequest,
+    request: Request,
     repository: AnalysisReportRepository = Depends(get_analysis_report_repository),
 ) -> AnalysisResponse | JSONResponse:
-    graph = build_analysis_graph(repository)
+    graph = build_analysis_graph(
+        repository,
+        company_events_provider=request.app.state.company_events_provider,
+        macro_calendar_provider=request.app.state.macro_calendar_provider,
+    )
 
     try:
-        result = graph.invoke({"request": request.model_dump(mode="python")})
+        result = graph.invoke({"request": analyze_request.model_dump(mode="python")})
         final_state = TradePilotState.model_validate(result)
     except RuntimeError as exc:
         if isinstance(exc.__cause__, RepositoryUnavailableError):
