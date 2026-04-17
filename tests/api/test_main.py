@@ -1,11 +1,28 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 
-from app.api.main import app
+from app.api.main import app, get_analysis_report_repository
+from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
+from app.schemas.api import AnalysisResponse
 
 
 client = TestClient(app)
+
+
+@dataclass
+class FakeAnalysisReportRepository:
+    captured_payload: AnalysisReportPayload | None = None
+
+    def save_analysis_report(self, payload: AnalysisReportPayload) -> PersistedAnalysisRecord:
+        self.captured_payload = payload
+        return PersistedAnalysisRecord(
+            record_id="report_api_123",
+            persisted_at=datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
+        )
 
 
 def test_post_analyses_route_exists() -> None:
@@ -21,16 +38,34 @@ def test_post_analyses_route_exists() -> None:
     assert route is not None
 
 
-def test_valid_request_returns_placeholder_internal_error() -> None:
+def test_valid_request_returns_documented_503_when_repository_is_unavailable() -> None:
     response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
 
-    assert response.status_code == 500
+    assert response.status_code == 503
     assert response.json() == {
         "error": {
-            "code": "internal_error",
-            "message": "analysis pipeline is not implemented",
+            "code": "upstream_unavailable",
+            "message": "analysis persistence is unavailable",
         }
     }
+
+
+def test_valid_request_returns_200_with_dependency_override() -> None:
+    repository = FakeAnalysisReportRepository()
+    app.dependency_overrides[get_analysis_report_repository] = lambda: repository
+
+    try:
+        response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    analysis_response = AnalysisResponse.model_validate(payload)
+    assert analysis_response.ticker == "AAPL"
+    assert analysis_response.trade_plan.overall_bias == analysis_response.decision_synthesis.overall_bias
+    assert repository.captured_payload is not None
+    assert repository.captured_payload.response.ticker == "AAPL"
 
 
 def test_missing_ticker_returns_documented_400_error_shape() -> None:

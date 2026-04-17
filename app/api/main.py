@@ -1,12 +1,31 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.graph.builder import build_analysis_graph
+from app.repositories.analysis_reports import AnalysisReportRepository
 from app.schemas.api import AnalyzeRequest, AnalysisResponse, ErrorDetail, ErrorObject, ErrorResponse
+from app.schemas.graph_state import TradePilotState
+
+
+@dataclass
+class RepositoryUnavailableError(RuntimeError):
+    message: str = "analysis report repository is unavailable"
+
+
+class UnavailableAnalysisReportRepository:
+    def save_analysis_report(self, payload: Any) -> Any:
+        del payload
+        raise RepositoryUnavailableError()
+
+
+def get_analysis_report_repository() -> AnalysisReportRepository:
+    return UnavailableAnalysisReportRepository()
 
 
 def _build_error_response(
@@ -95,9 +114,39 @@ async def handle_request_validation_error(
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
     },
 )
-async def create_analysis(_: AnalyzeRequest) -> JSONResponse:
-    return _build_error_response(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        code="internal_error",
-        message="analysis pipeline is not implemented",
-    )
+async def create_analysis(
+    request: AnalyzeRequest,
+    repository: AnalysisReportRepository = Depends(get_analysis_report_repository),
+) -> AnalysisResponse | JSONResponse:
+    graph = build_analysis_graph(repository)
+
+    try:
+        result = graph.invoke({"request": request.model_dump(mode="python")})
+        final_state = TradePilotState.model_validate(result)
+    except RuntimeError as exc:
+        if isinstance(exc.__cause__, RepositoryUnavailableError):
+            return _build_error_response(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                code="upstream_unavailable",
+                message="analysis persistence is unavailable",
+            )
+        return _build_error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="internal_error",
+            message="analysis pipeline failed unexpectedly",
+        )
+    except Exception:
+        return _build_error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="internal_error",
+            message="analysis pipeline failed unexpectedly",
+        )
+
+    if final_state.response is None:
+        return _build_error_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="internal_error",
+            message="analysis pipeline did not produce a response",
+        )
+
+    return final_state.response
