@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from typing import Awaitable, TypeVar
 
+from app.analysis.event import analyze_event_inputs
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
-    AnalysisDirection,
     AnalysisModuleName,
     AnalysisModuleResult,
     ModuleExecutionStatus,
@@ -20,7 +22,8 @@ EVENT_DEGRADED_REASON = "event module placeholder until provider integration is 
 EVENT_DEGRADED_WARNING = (
     "Event analysis degraded: provider-backed company event and macro data is not available yet."
 )
-EVENT_USABLE_SUMMARY = "Event analysis found {company_count} company events and {macro_count} macro events within the holding window."
+
+AwaitableT = TypeVar("AwaitableT")
 
 
 def run_event(
@@ -92,7 +95,7 @@ def _run_provider_backed_event_analysis(
 
     days_ahead = window[1]
     try:
-        company_events, macro_events = asyncio.run(
+        company_events, macro_events = _run_awaitable(
             _fetch_event_inputs(
                 normalized_ticker,
                 market,
@@ -104,16 +107,18 @@ def _run_provider_backed_event_analysis(
     except Exception:
         return run_event(validated_state)
 
+    event_signal = analyze_event_inputs(
+        company_events,
+        macro_events,
+        analysis_time=validated_state.context.analysis_time,
+    )
     event_result = AnalysisModuleResult(
         module=AnalysisModuleName.EVENT,
         status=ModuleExecutionStatus.USABLE,
-        summary=EVENT_USABLE_SUMMARY.format(
-            company_count=len(company_events),
-            macro_count=len(macro_events),
-        ),
-        direction=AnalysisDirection.NEUTRAL,
-        data_completeness_pct=100.0,
-        low_confidence=False,
+        summary=event_signal.summary,
+        direction=event_signal.direction,
+        data_completeness_pct=event_signal.data_completeness_pct,
+        low_confidence=event_signal.low_confidence,
         reason=None,
     )
 
@@ -140,6 +145,16 @@ async def _fetch_event_inputs(
         company_events_provider.get_company_events(normalized_ticker, days_ahead=days_ahead),
         macro_calendar_provider.get_macro_events(market=market, days_ahead=days_ahead),
     )
+
+
+def _run_awaitable(awaitable: Awaitable[AwaitableT]) -> AwaitableT:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, awaitable).result()
 
 
 def _merge_sources(existing: list[Source], additions: list[Source]) -> list[Source]:

@@ -6,7 +6,6 @@ from app.graph.nodes.run_event import (
     EVENT_DEGRADED_REASON,
     EVENT_DEGRADED_SUMMARY,
     EVENT_DEGRADED_WARNING,
-    EVENT_USABLE_SUMMARY,
     run_event,
 )
 from app.services.providers.dtos import CompanyEvent, MacroCalendarEvent, ProviderSourceRef
@@ -136,6 +135,7 @@ def test_run_event_uses_provider_data_when_available() -> None:
             "normalized_ticker": "AAPL",
             "request_id": "req_provider",
             "context": {
+                "analysis_time": datetime(2026, 4, 17, 12, 0, tzinfo=UTC),
                 "market": "US",
                 "analysis_window_days": [7, 90],
             },
@@ -146,10 +146,12 @@ def test_run_event_uses_provider_data_when_available() -> None:
 
     assert state.module_results.event is not None
     assert state.module_results.event.status == ModuleExecutionStatus.USABLE
-    assert state.module_results.event.summary == EVENT_USABLE_SUMMARY.format(
-        company_count=1,
-        macro_count=1,
+    assert state.module_results.event.direction == "bearish"
+    assert state.module_results.event.summary == (
+        "Event analysis found 1 company events and 1 macro events within the holding window. "
+        "Near-term risks: 2; positive catalysts: 0; resulting bias: bearish."
     )
+    assert state.module_results.event.low_confidence is False
     assert [source.name for source in state.sources] == ["provider-x", "macro-provider"]
     assert state.diagnostics.degraded_modules == []
     assert state.diagnostics.warnings == []
