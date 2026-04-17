@@ -4,9 +4,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.api import AnalyzeRequest, AnalysisResponse, DecisionSynthesis, Source, TradePlan
+from app.schemas.modules import AnalysisModuleResult
 
 
 JsonObject = dict[str, Any]
@@ -32,10 +33,24 @@ class ProviderPayloads(GraphStateSchema):
 
 
 class ModuleResults(GraphStateSchema):
-    technical: JsonObject | None = None
-    fundamental: JsonObject | None = None
-    sentiment: JsonObject | None = None
-    event: JsonObject | None = None
+    technical: AnalysisModuleResult | None = None
+    fundamental: AnalysisModuleResult | None = None
+    sentiment: AnalysisModuleResult | None = None
+    event: AnalysisModuleResult | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_module_names(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        for module_name in ("technical", "fundamental", "sentiment", "event"):
+            result = payload.get(module_name)
+            if isinstance(result, dict) and "module" not in result:
+                payload[module_name] = {"module": module_name, **result}
+
+        return payload
 
 
 class PersistenceStatus(StrEnum):
