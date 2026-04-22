@@ -2,12 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.rules.messages import PREPARE_CONTEXT_NORMALIZED_TICKER_REQUIRED_ERROR
+from app.rules.runtime import DEFAULT_ANALYSIS_WINDOW_DAYS, DEFAULT_BENCHMARK, DEFAULT_MARKET
 from app.schemas.graph_state import GraphContext, TradePilotState
-
-
-DEFAULT_MARKET = "US"
-DEFAULT_BENCHMARK = "SPY"
-DEFAULT_ANALYSIS_WINDOW_DAYS = (7, 90)
 
 
 def prepare_context(state: TradePilotState | dict) -> TradePilotState:
@@ -15,7 +12,7 @@ def prepare_context(state: TradePilotState | dict) -> TradePilotState:
     normalized_ticker = validated_state.normalized_ticker
 
     if normalized_ticker is None or not normalized_ticker.strip():
-        raise ValueError("normalized_ticker is required to prepare context")
+        raise ValueError(PREPARE_CONTEXT_NORMALIZED_TICKER_REQUIRED_ERROR)
 
     existing_context = validated_state.context
     prepared_context = GraphContext(

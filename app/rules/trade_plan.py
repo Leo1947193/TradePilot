@@ -1,0 +1,5 @@
+from __future__ import annotations
+
+
+LOW_CONFIDENCE_THRESHOLD = 0.55
+LOW_COMPLETENESS_THRESHOLD = 60.0

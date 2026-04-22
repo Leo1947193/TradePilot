@@ -13,12 +13,12 @@ from app.repositories.analysis_reports import (
     PersistedAnalysisRecord,
     PersistedAnalysisReport,
 )
+from app.rules.versions import (
+    MODULE_REPORT_SCHEMA_VERSION,
+    PIPELINE_VERSION,
+    STORAGE_SCHEMA_VERSION,
+)
 from app.schemas.api import AnalysisResponse, DecisionSynthesis, TradePlan
-
-
-STORAGE_SCHEMA_VERSION = "v1"
-PIPELINE_VERSION = "langgraph-v1"
-MODULE_REPORT_SCHEMA_VERSION = "v1"
 
 INSERT_ANALYSIS_REPORT_SQL = """
 INSERT INTO analysis_reports (

@@ -24,6 +24,7 @@ from app.repositories.postgresql_analysis_reports import (
     SELECT_ANALYSIS_REPORTS_BY_TICKER_SQL,
     SELECT_LATEST_ANALYSIS_REPORT_BY_TICKER_SQL,
 )
+from app.rules.versions import MODULE_REPORT_SCHEMA_VERSION, PIPELINE_VERSION, STORAGE_SCHEMA_VERSION
 from app.schemas.api import AnalysisResponse
 
 
@@ -201,7 +202,10 @@ def test_save_analysis_report_maps_key_payload_fields_to_sql_params() -> None:
     assert report_params["overall_bias"] == payload.decision_synthesis.overall_bias.value
     assert report_params["actionability_state"] == payload.decision_synthesis.actionability_state.value
     assert report_params["market"] == payload.context.market
+    assert report_params["storage_schema_version"] == STORAGE_SCHEMA_VERSION
+    assert report_params["pipeline_version"] == PIPELINE_VERSION
     assert first_module_params["module_name"] == "technical"
+    assert first_module_params["report_schema_version"] == MODULE_REPORT_SCHEMA_VERSION
     assert first_module_params["status"] == payload.module_results.technical.status.value
     assert first_module_params["summary"] == payload.module_results.technical.summary
 
