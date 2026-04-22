@@ -4,7 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
-from app.analysis.sentiment import analyze_news_sentiment
+from app.analysis.sentiment import analyze_sentiment_module
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
@@ -93,17 +93,7 @@ def _try_provider_backed_result(
     if not articles:
         return None
 
-    sentiment_signal = analyze_news_sentiment(articles)
-
-    sentiment_result = AnalysisModuleResult(
-        module=AnalysisModuleName.SENTIMENT,
-        status=ModuleExecutionStatus.USABLE,
-        summary=sentiment_signal.summary,
-        direction=sentiment_signal.direction,
-        data_completeness_pct=sentiment_signal.data_completeness_pct,
-        low_confidence=sentiment_signal.low_confidence,
-        reason=None,
-    )
+    sentiment_result = analyze_sentiment_module(articles)
 
     degraded_modules = [
         module_name
