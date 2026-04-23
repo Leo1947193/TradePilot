@@ -190,6 +190,7 @@ def test_trade_pilot_state_defaults_optional_sections_to_empty_state() -> None:
     assert state.context.analysis_window_days is None
     assert state.provider_payloads.market is None
     assert state.module_results.technical is None
+    assert state.module_reports.technical is None
     assert state.decision_synthesis is None
     assert state.trade_plan is None
     assert state.response is None

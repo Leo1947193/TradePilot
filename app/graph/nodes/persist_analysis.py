@@ -32,6 +32,7 @@ def persist_analysis(
         request=validated_state.request,
         context=validated_state.context,
         module_results=validated_state.module_results,
+        module_reports=validated_state.module_reports,
         decision_synthesis=validated_state.decision_synthesis,
         trade_plan=validated_state.trade_plan,
         response=validated_state.response,

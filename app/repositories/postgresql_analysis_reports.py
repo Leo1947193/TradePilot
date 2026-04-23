@@ -304,6 +304,7 @@ class PostgreSQLAnalysisReportRepository:
 
         for module_name in ("technical", "fundamental", "sentiment", "event"):
             module_result = getattr(payload.module_results, module_name)
+            module_report = getattr(payload.module_reports, module_name)
             if module_result is None:
                 raise ValueError(f"module_results.{module_name} is required for persistence")
 
@@ -321,7 +322,7 @@ class PostgreSQLAnalysisReportRepository:
                     "low_confidence": module_result.low_confidence,
                     "summary": module_result.summary,
                     "risk_flags": Jsonb(_module_risk_flags(module_result)),
-                    "report_json": Jsonb(module_result.model_dump(mode="json")),
+                    "report_json": Jsonb(module_report or module_result.model_dump(mode="json")),
                     "created_at": persisted_at,
                 }
             )

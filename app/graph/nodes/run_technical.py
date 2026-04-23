@@ -4,7 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
-from app.analysis.technical import analyze_market_bars
+from app.analysis.technical import analyze_technical_aggregate, analyze_technical_module
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
@@ -93,17 +93,8 @@ def _try_provider_backed_result(
     if not bars:
         return None
 
-    technical_signal = analyze_market_bars(bars)
-
-    technical_result = AnalysisModuleResult(
-        module=AnalysisModuleName.TECHNICAL,
-        status=ModuleExecutionStatus.USABLE,
-        summary=technical_signal.summary,
-        direction=technical_signal.direction,
-        data_completeness_pct=technical_signal.data_completeness_pct,
-        low_confidence=technical_signal.low_confidence,
-        reason=None,
-    )
+    technical_aggregate = analyze_technical_aggregate(bars)
+    technical_result = analyze_technical_module(bars)
 
     degraded_modules = [
         module_name
@@ -130,6 +121,9 @@ def _try_provider_backed_result(
     updated_module_results = validated_state.module_results.model_copy(
         update={"technical": technical_result}
     )
+    updated_module_reports = validated_state.module_reports.model_copy(
+        update={"technical": technical_aggregate.model_dump(mode="json")}
+    )
     updated_diagnostics = validated_state.diagnostics.model_copy(
         update={
             "degraded_modules": degraded_modules,
@@ -140,6 +134,7 @@ def _try_provider_backed_result(
     return validated_state.model_copy(
         update={
             "module_results": updated_module_results,
+            "module_reports": updated_module_reports,
             "diagnostics": updated_diagnostics,
             "sources": updated_sources,
         }

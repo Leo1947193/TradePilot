@@ -53,6 +53,13 @@ class ModuleResults(GraphStateSchema):
         return payload
 
 
+class ModuleReports(GraphStateSchema):
+    technical: dict[str, Any] | None = None
+    fundamental: dict[str, Any] | None = None
+    sentiment: dict[str, Any] | None = None
+    event: dict[str, Any] | None = None
+
+
 class PersistenceStatus(StrEnum):
     PENDING = "pending"
     SUCCEEDED = "succeeded"
@@ -80,6 +87,7 @@ class TradePilotState(GraphStateSchema):
     context: GraphContext = Field(default_factory=GraphContext)
     provider_payloads: ProviderPayloads = Field(default_factory=ProviderPayloads)
     module_results: ModuleResults = Field(default_factory=ModuleResults)
+    module_reports: ModuleReports = Field(default_factory=ModuleReports)
     decision_synthesis: DecisionSynthesis | None = None
     trade_plan: TradePlan | None = None
     response: AnalysisResponse | None = None

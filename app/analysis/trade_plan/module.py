@@ -6,8 +6,19 @@ from app.analysis.trade_plan.schemas import TradePlanInput, TradePlanSignal
 from app.schemas.api import DecisionSynthesis, TradePlan
 
 
-def build_trade_plan_from_decision(decision: DecisionSynthesis) -> TradePlanSignal:
-    return build_trade_plan(TradePlanInput(decision=decision))
+def build_trade_plan_from_decision(
+    decision: DecisionSynthesis,
+    *,
+    technical_report: dict | None = None,
+    event_report: dict | None = None,
+) -> TradePlanSignal:
+    return build_trade_plan(
+        TradePlanInput(
+            decision=decision,
+            technical_report=technical_report,
+            event_report=event_report,
+        )
+    )
 
 
 def build_trade_plan(plan_input: TradePlanInput) -> TradePlanSignal:

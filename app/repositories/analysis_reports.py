@@ -6,7 +6,7 @@ from typing import Protocol
 
 from app.schemas.api import Source
 from app.schemas.api import AnalyzeRequest, AnalysisResponse, DecisionSynthesis, TradePlan
-from app.schemas.graph_state import DiagnosticsState, GraphContext, ModuleResults
+from app.schemas.graph_state import DiagnosticsState, GraphContext, ModuleReports, ModuleResults
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,7 @@ class AnalysisReportPayload:
     request: AnalyzeRequest
     context: GraphContext
     module_results: ModuleResults
+    module_reports: ModuleReports
     decision_synthesis: DecisionSynthesis
     trade_plan: TradePlan
     response: AnalysisResponse

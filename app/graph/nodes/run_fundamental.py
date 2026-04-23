@@ -4,7 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
-from app.analysis.fundamental import analyze_financial_snapshot
+from app.analysis.fundamental import analyze_fundamental_aggregate, analyze_fundamental_module
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
@@ -93,17 +93,8 @@ def _try_provider_backed_result(
     if snapshot is None:
         return None
 
-    fundamental_signal = analyze_financial_snapshot(snapshot)
-
-    fundamental_result = AnalysisModuleResult(
-        module=AnalysisModuleName.FUNDAMENTAL,
-        status=ModuleExecutionStatus.USABLE,
-        summary=fundamental_signal.summary,
-        direction=fundamental_signal.direction,
-        data_completeness_pct=fundamental_signal.data_completeness_pct,
-        low_confidence=fundamental_signal.low_confidence,
-        reason=None,
-    )
+    fundamental_aggregate = analyze_fundamental_aggregate(snapshot)
+    fundamental_result = analyze_fundamental_module(snapshot)
 
     degraded_modules = [
         module_name
@@ -129,6 +120,9 @@ def _try_provider_backed_result(
     updated_module_results = validated_state.module_results.model_copy(
         update={"fundamental": fundamental_result}
     )
+    updated_module_reports = validated_state.module_reports.model_copy(
+        update={"fundamental": fundamental_aggregate.model_dump(mode="json")}
+    )
     updated_diagnostics = validated_state.diagnostics.model_copy(
         update={
             "degraded_modules": degraded_modules,
@@ -139,6 +133,7 @@ def _try_provider_backed_result(
     return validated_state.model_copy(
         update={
             "module_results": updated_module_results,
+            "module_reports": updated_module_reports,
             "diagnostics": updated_diagnostics,
             "sources": updated_sources,
         }

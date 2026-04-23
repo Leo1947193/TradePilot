@@ -4,7 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
-from app.analysis.event import analyze_event_inputs
+from app.analysis.event import analyze_event_aggregate, analyze_event_inputs
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
@@ -107,6 +107,11 @@ def _run_provider_backed_event_analysis(
     except Exception:
         return run_event(validated_state)
 
+    event_aggregate = analyze_event_aggregate(
+        company_events,
+        macro_events,
+        analysis_time=validated_state.context.analysis_time,
+    )
     event_signal = analyze_event_inputs(
         company_events,
         macro_events,
@@ -122,9 +127,14 @@ def _run_provider_backed_event_analysis(
         reason=None,
     )
 
+    updated_module_reports = validated_state.module_reports.model_copy(
+        update={"event": event_aggregate.model_dump(mode="json")}
+    )
+
     return validated_state.model_copy(
         update={
             "module_results": validated_state.module_results.model_copy(update={"event": event_result}),
+            "module_reports": updated_module_reports,
             "sources": _merge_sources(
                 validated_state.sources,
                 [_to_source(event.source, SourceType.EVENT) for event in company_events]

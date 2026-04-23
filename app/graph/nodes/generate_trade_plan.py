@@ -10,5 +10,9 @@ def generate_trade_plan(state: TradePilotState | dict) -> TradePilotState:
     if decision is None:
         raise ValueError("decision_synthesis is required to generate trade plan")
 
-    trade_plan_signal = build_trade_plan_from_decision(decision)
+    trade_plan_signal = build_trade_plan_from_decision(
+        decision,
+        technical_report=validated_state.module_reports.technical,
+        event_report=validated_state.module_reports.event,
+    )
     return validated_state.model_copy(update={"trade_plan": trade_plan_signal.trade_plan})

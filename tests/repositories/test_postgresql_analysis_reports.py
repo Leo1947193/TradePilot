@@ -62,6 +62,7 @@ def build_payload() -> AnalysisReportPayload:
         request=state.request,
         context=state.context,
         module_results=state.module_results,
+        module_reports=state.module_reports,
         decision_synthesis=state.decision_synthesis,
         trade_plan=state.trade_plan,
         response=state.response,

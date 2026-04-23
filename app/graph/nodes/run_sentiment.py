@@ -4,7 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, TypeVar
 
-from app.analysis.sentiment import analyze_sentiment_module
+from app.analysis.sentiment import analyze_sentiment_aggregate, analyze_sentiment_module
 from app.schemas.api import Source, SourceType
 from app.schemas.graph_state import TradePilotState
 from app.schemas.modules import (
@@ -93,6 +93,7 @@ def _try_provider_backed_result(
     if not articles:
         return None
 
+    sentiment_aggregate = analyze_sentiment_aggregate(articles)
     sentiment_result = analyze_sentiment_module(articles)
 
     degraded_modules = [
@@ -120,6 +121,9 @@ def _try_provider_backed_result(
     updated_module_results = validated_state.module_results.model_copy(
         update={"sentiment": sentiment_result}
     )
+    updated_module_reports = validated_state.module_reports.model_copy(
+        update={"sentiment": sentiment_aggregate.model_dump(mode="json")}
+    )
     updated_diagnostics = validated_state.diagnostics.model_copy(
         update={
             "degraded_modules": degraded_modules,
@@ -130,6 +134,7 @@ def _try_provider_backed_result(
     return validated_state.model_copy(
         update={
             "module_results": updated_module_results,
+            "module_reports": updated_module_reports,
             "diagnostics": updated_diagnostics,
             "sources": updated_sources,
         }

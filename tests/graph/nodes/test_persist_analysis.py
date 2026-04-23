@@ -109,6 +109,7 @@ def test_persist_analysis_passes_required_payload_to_repository() -> None:
     assert repository.captured_payload.analysis_time == state.context.analysis_time
     assert repository.captured_payload.context == state.context
     assert repository.captured_payload.module_results == state.module_results
+    assert repository.captured_payload.module_reports == state.module_reports
     assert repository.captured_payload.decision_synthesis == state.decision_synthesis
     assert repository.captured_payload.trade_plan == state.trade_plan
     assert repository.captured_payload.response == state.response

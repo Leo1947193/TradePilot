@@ -16,6 +16,7 @@ def collect_do_not_trade_conditions(plan_input: TradePlanInput) -> list[str]:
         do_not_trade_conditions.append("actionability_state_avoid")
 
     do_not_trade_conditions.extend(decision.blocking_flags)
+    do_not_trade_conditions.extend(_event_risk_flags(plan_input.event_report))
 
     if decision.conflict_state == "conflicted":
         do_not_trade_conditions.append("conflict_state_conflicted")
@@ -32,3 +33,10 @@ def _deduplicate(items: list[str]) -> list[str]:
         if item not in ordered_unique:
             ordered_unique.append(item)
     return ordered_unique
+
+
+def _event_risk_flags(event_report: dict | None) -> list[str]:
+    if not isinstance(event_report, dict):
+        return []
+    flags = event_report.get("event_risk_flags")
+    return [str(flag) for flag in flags] if isinstance(flags, list) else []

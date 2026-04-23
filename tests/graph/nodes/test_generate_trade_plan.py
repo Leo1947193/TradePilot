@@ -187,3 +187,26 @@ def test_generate_trade_plan_populates_deterministic_do_not_trade_conditions() -
         conflict_state="conflicted",
         data_completeness_pct=55.0,
     ))
+
+
+def test_generate_trade_plan_reads_event_report_flags_without_recomputing_direction() -> None:
+    state = generate_trade_plan(
+        {
+            "request": {"ticker": "AAPL"},
+            "request_id": "req_event_report",
+            "decision_synthesis": make_decision_payload(
+                overall_bias="neutral",
+                actionability_state="watch",
+                confidence_score=0.72,
+            ),
+            "module_reports": {
+                "event": {
+                    "event_risk_flags": ["binary_event_imminent"],
+                }
+            },
+        }
+    )
+
+    assert state.trade_plan is not None
+    assert state.trade_plan.overall_bias == "neutral"
+    assert state.trade_plan.do_not_trade_conditions == ["binary_event_imminent"]
