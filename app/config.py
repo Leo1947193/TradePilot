@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     market_data_provider: str = "yfinance"
     news_provider: str = "finnhub"
     macro_calendar_path: str | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    minimax_api_key: str | None = None
+    minimax_base_url: str = "https://api.minimax.io/v1"
     request_timeout_seconds: float = Field(default=8.0, gt=0)
 
 
