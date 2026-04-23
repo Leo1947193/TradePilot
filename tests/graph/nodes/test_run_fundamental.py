@@ -145,6 +145,7 @@ def test_run_fundamental_provider_backed_path_writes_usable_result() -> None:
     assert state.module_results.fundamental is not None
     assert state.module_results.fundamental.status == ModuleExecutionStatus.USABLE
     assert state.module_results.fundamental.direction == "bullish"
+    assert state.module_results.fundamental.module == AnalysisModuleName.FUNDAMENTAL
     assert state.module_results.fundamental.summary == (
         "Fundamental analysis reviewed 7 of 7 core fields and found a bullish bias "
         "(positive signals: 5, negative signals: 0). Key fields: market cap 3000000000, "

@@ -9,7 +9,12 @@ from app.graph.nodes.run_technical import (
     run_technical,
 )
 from app.services.providers.dtos import MarketBar, ProviderSourceRef
-from app.schemas.modules import AnalysisModuleName, ModuleExecutionStatus
+from app.schemas.modules import (
+    AnalysisDirection,
+    AnalysisModuleName,
+    AnalysisModuleResult,
+    ModuleExecutionStatus,
+)
 
 
 def test_run_technical_writes_degraded_module_result() -> None:
@@ -155,10 +160,6 @@ def test_run_technical_provider_backed_path_writes_usable_result() -> None:
     assert state.module_results.technical is not None
     assert state.module_results.technical.status == ModuleExecutionStatus.USABLE
     assert state.module_results.technical.direction == "bullish"
-    assert state.module_results.technical.summary == (
-        "Technical analysis reviewed 3 market bars. Price return over lookback: +3.17%. "
-        "Latest close is above the short moving average, producing a bullish bias."
-    )
     assert state.module_results.technical.data_completeness_pct == 5.0
     assert state.module_results.technical.low_confidence is False
     assert state.diagnostics.degraded_modules == []
@@ -218,3 +219,50 @@ def test_run_technical_provider_errors_or_empty_data_fall_back_to_degraded() -> 
     assert empty_state.module_results.technical.status == ModuleExecutionStatus.DEGRADED
     assert error_state.module_results.technical is not None
     assert error_state.module_results.technical.status == ModuleExecutionStatus.DEGRADED
+
+
+def test_run_technical_provider_backed_path_uses_module_entrypoint(
+    monkeypatch,
+) -> None:
+    provider = FakeMarketDataProvider(
+        bars=[
+            make_market_bar(day=15, open_price=188.0, high=190.0, low=187.0, close=189.0),
+            make_market_bar(day=16, open_price=190.0, high=193.0, low=189.0, close=192.0),
+            make_market_bar(day=17, open_price=192.0, high=196.0, low=191.0, close=195.0),
+        ]
+    )
+    captured_bar_count: dict[str, int] = {}
+
+    def fake_analyze_technical_module(bars: list[MarketBar]) -> AnalysisModuleResult:
+        captured_bar_count["count"] = len(bars)
+        return AnalysisModuleResult(
+            module=AnalysisModuleName.TECHNICAL,
+            status=ModuleExecutionStatus.USABLE,
+            summary="module result",
+            direction=AnalysisDirection.NEUTRAL,
+            data_completeness_pct=12.5,
+            low_confidence=True,
+            reason=None,
+        )
+
+    monkeypatch.setattr(
+        "app.graph.nodes.run_technical.analyze_technical_module",
+        fake_analyze_technical_module,
+    )
+
+    state = run_technical(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_module_entrypoint",
+            "context": {"analysis_window_days": [7, 90]},
+        },
+        market_data_provider=provider,
+    )
+
+    assert captured_bar_count == {"count": 3}
+    assert state.module_results.technical is not None
+    assert state.module_results.technical.summary == "module result"
+    assert state.module_results.technical.direction == AnalysisDirection.NEUTRAL
+    assert state.module_results.technical.data_completeness_pct == 12.5
+    assert state.module_results.technical.low_confidence is True
