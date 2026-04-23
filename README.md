@@ -134,8 +134,14 @@ MINIMAX_API_KEY=your_minimax_key
 ```env
 MARKET_DATA_PROVIDER=yfinance
 REQUEST_TIMEOUT_SECONDS=8.0
-MINIMAX_BASE_URL=https://api.minimax.io/v1
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
 ```
+
+说明：
+
+- `.env` 里仍然使用 `LLM_PROVIDER=minimax`、`LLM_MODEL=minimax-m2.7`、`MINIMAX_API_KEY=...`
+- 应用内部会把 `minimax-m2.7` 映射成 OpenAI 兼容接口需要的 `MiniMax-M2.7`
+- MiniMax 调用已按 OpenAI 兼容方式实现，默认 base URL 对应 `https://api.minimaxi.com/v1`
 
 说明：
 

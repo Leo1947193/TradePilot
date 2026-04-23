@@ -16,14 +16,14 @@ def test_settings_include_llm_env_vars(monkeypatch) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "minimax")
     monkeypatch.setenv("LLM_MODEL", "MiniMax-M2.5")
     monkeypatch.setenv("MINIMAX_API_KEY", "demo-key")
-    monkeypatch.setenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
+    monkeypatch.setenv("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1")
 
     settings = make_settings()
 
     assert settings.llm_provider == "minimax"
     assert settings.llm_model == "MiniMax-M2.5"
     assert settings.minimax_api_key == "demo-key"
-    assert settings.minimax_base_url == "https://api.minimax.io/v1"
+    assert settings.minimax_base_url == "https://api.minimaxi.com/v1"
 
 
 def test_build_llm_adapter_requires_provider() -> None:
@@ -75,3 +75,17 @@ def test_build_llm_adapter_returns_minimax_adapter() -> None:
     assert isinstance(adapter, MiniMaxLlmAdapter)
     assert adapter._model == "MiniMax-M2.5"
     assert adapter._timeout_seconds == 12.0
+
+
+def test_build_llm_adapter_maps_minimax_env_model_to_api_model_name() -> None:
+    settings = make_settings(
+        postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
+        llm_provider="minimax",
+        llm_model="minimax-m2.7",
+        minimax_api_key="demo-key",
+    )
+
+    adapter = build_llm_adapter(settings)
+
+    assert isinstance(adapter, MiniMaxLlmAdapter)
+    assert adapter._model == "MiniMax-M2.7"

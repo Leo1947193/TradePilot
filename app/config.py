@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     llm_provider: str | None = None
     llm_model: str | None = None
     minimax_api_key: str | None = None
-    minimax_base_url: str = "https://api.minimax.io/v1"
+    minimax_base_url: str = "https://api.minimaxi.com/v1"
     request_timeout_seconds: float = Field(default=8.0, gt=0)
 
     @model_validator(mode="after")

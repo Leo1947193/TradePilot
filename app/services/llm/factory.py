@@ -24,7 +24,15 @@ def build_llm_adapter(settings: Settings) -> LlmAdapter:
 
     return MiniMaxLlmAdapter(
         api_key=settings.minimax_api_key,
-        model=settings.llm_model,
+        model=_resolve_minimax_model_name(settings.llm_model),
         base_url=settings.minimax_base_url,
         timeout_seconds=settings.request_timeout_seconds,
     )
+
+
+def _resolve_minimax_model_name(model: str) -> str:
+    normalized = model.strip()
+    lower = normalized.lower()
+    if lower == "minimax-m2.7":
+        return "MiniMax-M2.7"
+    return normalized

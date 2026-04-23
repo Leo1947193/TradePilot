@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
-from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
-import httpx
+from openai import AsyncOpenAI
 
 from app.services.llm.dtos import (
     JsonGenerationRequest,
@@ -22,139 +20,114 @@ class MiniMaxLlmAdapter:
         *,
         api_key: str,
         model: str,
-        base_url: str = "https://api.minimax.io/v1",
+        base_url: str = "https://api.minimaxi.com/v1",
         timeout_seconds: float = 8.0,
-        client: httpx.AsyncClient | None = None,
+        client: Any | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
-        self._client = client
+        self._client = client or AsyncOpenAI(
+            api_key=api_key,
+            base_url=self._base_url,
+            timeout=timeout_seconds,
+        )
 
     async def generate_text(
         self,
         request: TextGenerationRequest,
     ) -> TextGenerationResult:
-        payload = self._build_payload(
-            messages=request.messages,
+        response = await self._client.chat.completions.create(
+            model=self._model,
+            messages=self._build_messages(request.messages),
             temperature=request.temperature,
-            max_output_tokens=request.max_output_tokens,
+            max_completion_tokens=request.max_output_tokens,
+            extra_body={"reasoning_split": True},
         )
-        body = await self._post_chat_completion(payload)
         return TextGenerationResult(
             provider="minimax",
-            model=self._model,
-            text=self._extract_text(body),
-            finish_reason=self._extract_finish_reason(body),
-            usage=self._extract_usage(body),
+            model=self._extract_model(response),
+            text=self._extract_text(response),
+            finish_reason=self._extract_finish_reason(response),
+            usage=self._extract_usage(response),
         )
 
     async def generate_json(
         self,
         request: JsonGenerationRequest,
     ) -> JsonGenerationResult:
-        payload = self._build_payload(
-            messages=request.messages,
+        extra_body: dict[str, Any] = {"reasoning_split": True}
+        if request.json_schema is not None:
+            extra_body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": request.json_schema,
+            }
+
+        response = await self._client.chat.completions.create(
+            model=self._model,
+            messages=self._build_messages(request.messages),
             temperature=request.temperature,
-            max_output_tokens=request.max_output_tokens,
-            json_schema=request.json_schema,
+            max_completion_tokens=request.max_output_tokens,
+            extra_body=extra_body,
         )
-        body = await self._post_chat_completion(payload)
-        raw_text = self._extract_text(body)
+        raw_text = self._extract_text(response)
         return JsonGenerationResult.from_text(
             provider="minimax",
-            model=self._model,
+            model=self._extract_model(response),
             raw_text=raw_text,
-            finish_reason=self._extract_finish_reason(body),
-            usage=self._extract_usage(body),
+            finish_reason=self._extract_finish_reason(response),
+            usage=self._extract_usage(response),
         )
 
-    def _build_payload(
-        self,
-        *,
-        messages: tuple[LlmMessage, ...],
-        temperature: float | None,
-        max_output_tokens: int | None,
-        json_schema: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": [
-                {
-                    "role": message.role,
-                    "content": message.content,
-                }
-                for message in messages
-            ],
-        }
-        if temperature is not None:
-            payload["temperature"] = temperature
-        if max_output_tokens is not None:
-            payload["max_completion_tokens"] = max_output_tokens
-        if json_schema is not None:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": json_schema,
-            }
-        return payload
+    def _build_messages(self, messages: tuple[LlmMessage, ...]) -> list[dict[str, str]]:
+        return [{"role": message.role, "content": message.content} for message in messages]
 
-    async def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
-        async with self._get_client() as client:
-            response = await client.post(
-                f"{self._base_url}/text/chatcompletion_v2",
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-            response.raise_for_status()
-            body = response.json()
-
-        base_resp = body.get("base_resp")
-        if isinstance(base_resp, dict) and base_resp.get("status_code", 0) not in (0, None):
-            raise RuntimeError(base_resp.get("status_msg") or "MiniMax returned a non-zero status_code")
-
-        return body
-
-    @asynccontextmanager
-    async def _get_client(self) -> AsyncIterator[httpx.AsyncClient]:
-        if self._client is not None:
-            yield self._client
-            return
-
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-            yield client
-
-    def _extract_text(self, body: dict[str, Any]) -> str:
-        choices = body.get("choices")
-        if not isinstance(choices, list) or not choices:
+    def _extract_text(self, response: Any) -> str:
+        choices = getattr(response, "choices", None)
+        if not choices:
             raise ValueError("MiniMax response did not include choices")
-        message = choices[0].get("message")
-        if not isinstance(message, dict):
-            raise ValueError("MiniMax response choice did not include a message")
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("MiniMax response message content is missing")
-        return content
 
-    def _extract_finish_reason(self, body: dict[str, Any]) -> str | None:
-        choices = body.get("choices")
-        if not isinstance(choices, list) or not choices:
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            raise ValueError("MiniMax response choice did not include a message")
+
+        content = getattr(message, "content", None)
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                text = getattr(item, "text", None)
+                if isinstance(text, str) and text:
+                    text_parts.append(text)
+                elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                    text_parts.append(item["text"])
+            if text_parts:
+                return "".join(text_parts)
+
+        raise ValueError("MiniMax response message content is missing")
+
+    def _extract_finish_reason(self, response: Any) -> str | None:
+        choices = getattr(response, "choices", None)
+        if not choices:
             return None
-        finish_reason = choices[0].get("finish_reason")
+        finish_reason = getattr(choices[0], "finish_reason", None)
         return str(finish_reason) if isinstance(finish_reason, str) else None
 
-    def _extract_usage(self, body: dict[str, Any]) -> LlmUsage | None:
-        usage = body.get("usage")
-        if not isinstance(usage, dict):
+    def _extract_usage(self, response: Any) -> LlmUsage | None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
             return None
         return LlmUsage(
-            prompt_tokens=_as_non_negative_int(usage.get("prompt_tokens")),
-            completion_tokens=_as_non_negative_int(usage.get("completion_tokens")),
-            total_tokens=_as_non_negative_int(usage.get("total_tokens")),
+            prompt_tokens=_as_non_negative_int(getattr(usage, "prompt_tokens", None)),
+            completion_tokens=_as_non_negative_int(getattr(usage, "completion_tokens", None)),
+            total_tokens=_as_non_negative_int(getattr(usage, "total_tokens", None)),
         )
+
+    def _extract_model(self, response: Any) -> str:
+        model = getattr(response, "model", None)
+        return str(model) if isinstance(model, str) and model else self._model
 
 
 def _as_non_negative_int(value: Any) -> int | None:
