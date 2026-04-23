@@ -139,3 +139,59 @@ A good agent:
 - verifies outcomes instead of guessing
 - communicates clearly about assumptions, changes, and risks
 <!-- ==================== PROJECT-SPECIFIC RULES (TradePilot) ==================== -->
+
+## 12. TradePilot Project Rules
+
+- This project is a contract-first backend for structured US stock analysis.
+- Keep the existing stack and layering stable: `FastAPI` + `Pydantic v2` + `LangGraph` + provider adapters + `PostgreSQL`.
+- Prefer reading `docs/zh/design/*` and `docs/zh/implementation/*` before changing behavior that is already documented.
+
+### 12.1 Contract Sources of Truth
+
+- Treat `app/schemas/api.py` as the public API contract source of truth.
+- Treat `app/schemas/graph_state.py:TradePilotState` as the semantic runtime state source of truth.
+- Treat `app/graph/builder.py` as the execution source of truth for node order and reducer behavior.
+- If code, docs, and tests disagree, do not guess. Read the matching implementation doc and the nearest tests, then align the smallest possible surface.
+
+### 12.2 Fixed Runtime Shape
+
+- Keep the main request flow fixed unless the task explicitly requires changing runtime architecture:
+  `validate_request -> prepare_context -> run_technical/run_fundamental/run_sentiment/run_event -> synthesize_decision -> generate_trade_plan -> assemble_response -> persist_analysis`.
+- Do not add hidden side paths, background jobs, or implicit state passing.
+- `persist_analysis` is part of the main request path, not a best-effort async task.
+- Do not add new business endpoints, loosen the request shape, or expand `AnalyzeRequest` beyond `ticker` unless explicitly requested.
+
+### 12.3 Layer Responsibilities
+
+- Put deterministic business rules in `app/analysis/`.
+- Put orchestration and state wiring in `app/graph/` and `app/graph/nodes/`.
+- Put external API adaptation, DTO mapping, timeout, and provider-specific parsing in `app/services/providers/`.
+- Put persistence mapping in `app/repositories/` and SQL/migrations in `app/db/`.
+- Do not move scoring, conflict resolution, or trade-plan branching into providers, repositories, or the API layer.
+
+### 12.4 Analysis and Synthesis Boundaries
+
+- The four analysis modules are peers. They must not depend on each other's conclusions as inputs.
+- Cross-module weighting, conflict handling, and blocking logic belong only in `synthesize_decision`.
+- `generate_trade_plan` must consume `decision_synthesis`; it must not recompute overall direction.
+- Preserve fixed module ordering where relevant: `technical`, `fundamental`, `sentiment`, `event`.
+
+### 12.5 Degrade Instead of Smearing Failures
+
+- For provider-backed module failures or missing upstream data, prefer module `degraded`/`excluded` behavior over ad hoc API changes.
+- Do not silently degrade validation, context preparation, response assembly, or persistence nodes.
+- Preserve diagnostics updates (`degraded_modules`, `excluded_modules`, `warnings`, `errors`) and avoid duplicate markers.
+- Keep source aggregation deterministic: deduplicate and preserve the builder-defined ordering.
+
+### 12.6 Editing and Verification Rules for This Repo
+
+- Match the existing implementation style: small synchronous node functions, explicit Pydantic validation, and narrow helper functions.
+- Reuse existing DTOs, enums, and module result models before introducing new shapes.
+- Do not add dependencies, new config knobs, or schema fields unless the task requires them.
+- Use `uv` for local commands and `pytest` for verification.
+- When changing:
+  - analysis rules: update focused rule or node tests
+  - public schemas or response shape: update schema/API tests
+  - graph flow or node contracts: update graph/node tests
+  - persistence or migrations: update repository/DB tests
+- Prefer deterministic tests with local fixtures and no network access.
