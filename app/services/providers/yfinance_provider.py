@@ -33,7 +33,7 @@ class YFinanceProvider:
         return await asyncio.to_thread(self._get_company_events_sync, symbol, days_ahead)
 
     def _get_daily_bars_sync(self, symbol: str, lookback_days: int) -> list[MarketBar]:
-        history = self._download_history(symbol, lookback_days)
+        history = self._normalize_history(self._download_history(symbol, lookback_days), symbol)
         if history is None or history.empty:
             return []
 
@@ -112,6 +112,27 @@ class YFinanceProvider:
             auto_adjust=False,
             threads=False,
         )
+
+    def _normalize_history(self, history: pd.DataFrame | None, symbol: str) -> pd.DataFrame | None:
+        if history is None or history.empty:
+            return history
+
+        if not isinstance(history.columns, pd.MultiIndex):
+            return history
+
+        ticker_symbol = symbol.upper()
+        if "Ticker" in history.columns.names:
+            available_tickers = history.columns.get_level_values("Ticker")
+        else:
+            available_tickers = history.columns.get_level_values(-1)
+
+        if ticker_symbol in available_tickers:
+            normalized_history = history.xs(ticker_symbol, axis=1, level=-1)
+        else:
+            normalized_history = history.droplevel(-1, axis=1)
+
+        normalized_history.columns.name = None
+        return normalized_history
 
     def _get_ticker(self, symbol: str):
         return yf.Ticker(symbol)

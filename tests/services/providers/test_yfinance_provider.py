@@ -31,6 +31,30 @@ def test_yfinance_provider_maps_daily_bars() -> None:
     assert bars[0].source.name == "yfinance"
 
 
+def test_yfinance_provider_maps_daily_bars_from_multiindex_history() -> None:
+    provider = YFinanceProvider()
+    history = pd.DataFrame(
+        {
+            ("Adj Close", "SNDK"): [191.5, 193.5],
+            ("Close", "SNDK"): [192.5, 194.5],
+            ("High", "SNDK"): [193.0, 195.0],
+            ("Low", "SNDK"): [189.0, 191.0],
+            ("Open", "SNDK"): [190.0, 192.0],
+            ("Volume", "SNDK"): [1000, 2000],
+        },
+        index=pd.to_datetime(["2026-04-16", "2026-04-17"], utc=True),
+    )
+    history.columns = pd.MultiIndex.from_tuples(history.columns, names=["Price", "Ticker"])
+    provider._download_history = lambda symbol, lookback_days: history  # type: ignore[method-assign]
+
+    bars = asyncio.run(provider.get_daily_bars("sndk", lookback_days=30))
+
+    assert [bar.symbol for bar in bars] == ["SNDK", "SNDK"]
+    assert bars[0].open == 190.0
+    assert bars[1].high == 195.0
+    assert bars[1].volume == 2000.0
+
+
 def test_yfinance_provider_maps_financial_snapshot_from_ticker_info() -> None:
     provider = YFinanceProvider()
     provider._get_ticker = lambda symbol: SimpleNamespace(  # type: ignore[method-assign]
