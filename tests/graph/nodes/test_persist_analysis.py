@@ -89,6 +89,23 @@ def test_persist_analysis_repository_failure_marks_failed_and_raises() -> None:
     assert state.persistence.record_id is None
     assert state.persistence.persisted_at is None
     assert state.persistence.error == "database unavailable"
+    assert state.diagnostics.errors == ["database unavailable"]
+
+
+def test_persist_analysis_repository_failure_deduplicates_existing_diagnostic_error() -> None:
+    state = build_persistable_state().model_copy(
+        update={
+            "diagnostics": build_persistable_state().diagnostics.model_copy(
+                update={"errors": ["database unavailable"]}
+            )
+        }
+    )
+    repository = FakeAnalysisReportRepository(error=RuntimeError("database unavailable"))
+
+    with pytest.raises(RuntimeError, match="analysis report persistence failed"):
+        persist_analysis(state, repository)
+
+    assert state.diagnostics.errors == ["database unavailable"]
 
 
 def test_persist_analysis_passes_required_payload_to_repository() -> None:
@@ -115,3 +132,19 @@ def test_persist_analysis_passes_required_payload_to_repository() -> None:
     assert repository.captured_payload.response == state.response
     assert repository.captured_payload.sources == state.sources
     assert repository.captured_payload.diagnostics == state.diagnostics
+
+
+def test_persist_analysis_keeps_response_sources_and_payload_sources_in_sync() -> None:
+    repository = FakeAnalysisReportRepository(
+        result=PersistedAnalysisRecord(
+            record_id="report_sync",
+            persisted_at=datetime(2026, 4, 17, 11, 30, tzinfo=timezone.utc),
+        )
+    )
+    state = build_persistable_state()
+
+    persist_analysis(state, repository)
+
+    assert repository.captured_payload is not None
+    assert repository.captured_payload.response.sources == repository.captured_payload.sources
+    assert repository.captured_payload.sources == state.sources

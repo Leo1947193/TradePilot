@@ -25,7 +25,7 @@ from app.repositories.postgresql_analysis_reports import (
     SELECT_LATEST_ANALYSIS_REPORT_BY_TICKER_SQL,
 )
 from app.rules.versions import MODULE_REPORT_SCHEMA_VERSION, PIPELINE_VERSION, STORAGE_SCHEMA_VERSION
-from app.schemas.api import AnalysisResponse
+from app.schemas.api import AnalysisResponse, Source, SourceType
 
 
 def build_payload() -> AnalysisReportPayload:
@@ -40,16 +40,8 @@ def build_payload() -> AnalysisReportPayload:
     state = state.model_copy(
         update={
             "sources": [
-                {
-                    "type": "technical",
-                    "name": "provider-a",
-                    "url": "https://example.com/a",
-                },
-                {
-                    "type": "news",
-                    "name": "provider-b",
-                    "url": "https://example.com/b",
-                },
+                Source(type=SourceType.TECHNICAL, name="provider-a", url="https://example.com/a"),
+                Source(type=SourceType.NEWS, name="provider-b", url="https://example.com/b"),
             ]
         }
     )
@@ -209,6 +201,28 @@ def test_save_analysis_report_maps_key_payload_fields_to_sql_params() -> None:
     assert first_module_params["report_schema_version"] == MODULE_REPORT_SCHEMA_VERSION
     assert first_module_params["status"] == payload.module_results.technical.status.value
     assert first_module_params["summary"] == payload.module_results.technical.summary
+    assert report_params["diagnostics_json"].obj == payload.diagnostics.model_dump(mode="json")
+    assert report_params["degraded_modules"].obj == payload.diagnostics.degraded_modules
+    assert report_params["excluded_modules"].obj == payload.diagnostics.excluded_modules
+
+
+def test_save_analysis_report_keeps_source_rows_aligned_with_response_sources() -> None:
+    connection = FakeConnection()
+    repository = PostgreSQLAnalysisReportRepository(FakePool(connection))
+    payload = build_payload()
+
+    repository.save_analysis_report(payload)
+
+    source_rows = [
+        params
+        for sql, params, _ in connection.executed
+        if sql == " ".join(INSERT_ANALYSIS_SOURCE_SQL.split())
+    ]
+
+    assert [source.name for source in payload.response.sources] == [source.name for source in payload.sources]
+    assert [row["source_name"] for row in source_rows] == [source.name for source in payload.sources]
+    assert [row["source_type"] for row in source_rows] == [source.type.value for source in payload.sources]
+    assert [row["source_url"] for row in source_rows] == [str(source.url) for source in payload.sources]
 
 
 def test_get_analysis_report_returns_mapped_report_or_none() -> None:

@@ -33,6 +33,12 @@ class FakeAnalysisReportRepository:
         )
 
 
+class FailingAnalysisReportRepository:
+    def save_analysis_report(self, payload: AnalysisReportPayload) -> PersistedAnalysisRecord:
+        del payload
+        raise RuntimeError("database unavailable")
+
+
 class FakeCompanyEventsProvider:
     async def get_company_events(self, symbol: str, *, days_ahead: int) -> list[CompanyEvent]:
         return [
@@ -183,6 +189,24 @@ def test_valid_request_returns_200_with_dependency_override() -> None:
     assert repository.captured_payload.response.ticker == "AAPL"
 
 
+def test_valid_request_returns_documented_500_when_persistence_fails() -> None:
+    app.dependency_overrides[get_analysis_report_repository] = lambda: FailingAnalysisReportRepository()
+
+    try:
+        with make_client() as client:
+            response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "internal_error",
+            "message": "analysis pipeline failed unexpectedly",
+        }
+    }
+
+
 def test_valid_request_uses_event_providers_when_present_on_app_state() -> None:
     repository = FakeAnalysisReportRepository()
     app.dependency_overrides[get_analysis_report_repository] = lambda: repository
@@ -237,6 +261,28 @@ def test_valid_request_uses_news_provider_when_present_on_app_state() -> None:
     assert response.status_code == 200
     payload = AnalysisResponse.model_validate(response.json())
     assert [source.name for source in payload.sources] == ["news-data-provider"]
+
+
+def test_valid_request_keeps_response_sources_aligned_with_persisted_payload() -> None:
+    repository = FakeAnalysisReportRepository()
+    app.dependency_overrides[get_analysis_report_repository] = lambda: repository
+
+    try:
+        with make_client() as client:
+            client.app.state.market_data_provider = FakeMarketDataProvider()
+            client.app.state.financial_data_provider = FakeFinancialDataProvider()
+            client.app.state.news_data_provider = FakeNewsDataProvider()
+            client.app.state.company_events_provider = FakeCompanyEventsProvider()
+            client.app.state.macro_calendar_provider = FakeMacroCalendarProvider()
+            response = client.post("/api/v1/analyses", json={"ticker": "AAPL"})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    public_response = AnalysisResponse.model_validate(response.json())
+    assert repository.captured_payload is not None
+    assert public_response.sources == repository.captured_payload.sources
+    assert repository.captured_payload.response.sources == repository.captured_payload.sources
 
 
 def test_missing_ticker_returns_documented_400_error_shape() -> None:

@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from app.graph.builder import build_analysis_graph
+from app.graph.nodes.run_event import EVENT_DEGRADED_WARNING
+from app.graph.nodes.run_fundamental import FUNDAMENTAL_DEGRADED_WARNING
+from app.graph.nodes.run_sentiment import SENTIMENT_DEGRADED_WARNING
+from app.graph.nodes.run_technical import TECHNICAL_DEGRADED_WARNING
 from app.repositories.analysis_reports import AnalysisReportPayload, PersistedAnalysisRecord
 from app.schemas.graph_state import PersistenceStatus, TradePilotState
 from app.services.providers.dtos import (
@@ -147,6 +151,27 @@ def test_build_analysis_graph_runs_end_to_end() -> None:
     assert final_state.module_results.event is not None
     assert repository.captured_payload is not None
     assert repository.captured_payload.response == final_state.response
+
+
+def test_build_analysis_graph_merges_degraded_diagnostics_in_module_order() -> None:
+    repository = FakeAnalysisReportRepository()
+    graph = build_analysis_graph(repository)
+
+    result = graph.invoke({"request": {"ticker": " aapl "}})
+    final_state = TradePilotState.model_validate(result)
+
+    assert final_state.diagnostics.degraded_modules == [
+        "technical",
+        "fundamental",
+        "sentiment",
+        "event",
+    ]
+    assert final_state.diagnostics.warnings == [
+        TECHNICAL_DEGRADED_WARNING,
+        FUNDAMENTAL_DEGRADED_WARNING,
+        SENTIMENT_DEGRADED_WARNING,
+        EVENT_DEGRADED_WARNING,
+    ]
 
 
 def test_build_analysis_graph_topology_matches_v1_order() -> None:

@@ -12,7 +12,7 @@ from app.graph.nodes.run_technical import run_technical
 from app.graph.nodes.synthesize_decision import synthesize_decision
 from app.graph.nodes.validate_request import validate_request
 from app.schemas.api import AnalysisResponse, DecisionSynthesis, ModuleContribution, Source
-from app.schemas.graph_state import ModuleResults
+from app.schemas.graph_state import ModuleReports, ModuleResults
 
 
 def build_state_with_plan() -> dict:
@@ -257,39 +257,41 @@ def test_assemble_response_prefers_richer_module_reports_when_available() -> Non
                     },
                 }
             ),
-            "module_reports": {
-                "technical": {
-                    "trend": "bullish",
-                    "key_support": [191.5, 188.0],
-                    "key_resistance": [198.0, 202.5],
-                    "volume_pattern": "accumulation",
-                    "entry_trigger": "Watch for a move above 196.50 to confirm vcp.",
-                    "target_price": 208.0,
-                    "stop_loss_price": 191.0,
-                    "risk_reward_ratio": 2.3,
-                    "risk_flags": ["event_overhang"],
-                    "summary": "Momentum remains constructive.",
-                },
-                "fundamental": {
-                    "summary": "Integrated fundamental view remains constructive.",
-                    "key_risks": ["financial_health_disqualify"],
-                    "subresults": {
-                        "financial_snapshot": {
-                            "key_metrics": ["market cap 3000000000", "PE 28.20", "EPS 6.50"]
-                        }
+            "module_reports": ModuleReports.model_validate(
+                {
+                    "technical": {
+                        "trend": "bullish",
+                        "key_support": [191.5, 188.0],
+                        "key_resistance": [198.0, 202.5],
+                        "volume_pattern": "accumulation",
+                        "entry_trigger": "Watch for a move above 196.50 to confirm vcp.",
+                        "target_price": 208.0,
+                        "stop_loss_price": 191.0,
+                        "risk_reward_ratio": 2.3,
+                        "risk_flags": ["event_overhang"],
+                        "summary": "Momentum remains constructive.",
                     },
-                },
-                "sentiment": {
-                    "news_tone": "positive",
-                    "market_expectation": "Expectations are constructive with stable signals.",
-                    "key_risks": ["crowded_narrative"],
-                },
-                "event": {
-                    "upcoming_catalysts": ["Vision product launch"],
-                    "risk_events": ["AAPL earnings"],
-                    "event_risk_flags": ["binary_event_imminent"],
-                },
-            },
+                    "fundamental": {
+                        "summary": "Integrated fundamental view remains constructive.",
+                        "key_risks": ["financial_health_disqualify"],
+                        "subresults": {
+                            "financial_snapshot": {
+                                "key_metrics": ["market cap 3000000000", "PE 28.20", "EPS 6.50"]
+                            }
+                        },
+                    },
+                    "sentiment": {
+                        "news_tone": "positive",
+                        "market_expectation": "Expectations are constructive with stable signals.",
+                        "key_risks": ["crowded_narrative"],
+                    },
+                    "event": {
+                        "upcoming_catalysts": ["Vision product launch"],
+                        "risk_events": ["AAPL earnings"],
+                        "event_risk_flags": ["binary_event_imminent"],
+                    },
+                }
+            ),
         }
     )
 
