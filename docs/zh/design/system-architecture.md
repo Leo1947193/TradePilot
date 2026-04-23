@@ -91,7 +91,7 @@ V1 不是开放选型，而是固定使用以下映射关系：
 - 让系统架构图能够直接映射到实现代码结构和测试边界
 - 避免在工程层同时维护多套 Python 环境与命令管理方式
 
-详细实现约束见 [../implementation/implementation-stack.md](../implementation/implementation-stack.md)。
+详细实现约束见 [../implementation/00_foundation/implementation-stack.md](../implementation/00_foundation/implementation-stack.md)。
 
 ---
 
@@ -198,10 +198,8 @@ V1 不是开放选型，而是固定使用以下映射关系：
 
 对外 API 对齐：
 
-- 主入口接口见 [../api/analyses.md](../api/analyses.md)
-- 顶层响应字段见 [../api/schemas.md](../api/schemas.md)
-- 机器可读契约见 [../api/openapi.yaml](../api/openapi.yaml)
-- LangGraph 与运行时实现见 [../implementation/langgraph-graph.md](../implementation/langgraph-graph.md) 和 [../implementation/runtime-contract.md](../implementation/runtime-contract.md)
+- 主入口接口与顶层响应字段见 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md)
+- LangGraph 与运行时实现见 [../implementation/01_runtime/langgraph-graph.md](../implementation/01_runtime/langgraph-graph.md) 和 [../implementation/01_runtime/runtime-contract.md](../implementation/01_runtime/runtime-contract.md)
 
 ### 4.6 结果持久化层
 

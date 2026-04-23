@@ -624,7 +624,7 @@ API 对齐说明：
 
 - 本节 Schema 定义的是情绪聚合器内部输出
 - 它是公共 `sentiment_expectations` 对象的上游来源，但不等同于最终 HTTP 响应
-- 最终对外契约见 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml)
+- 最终对外契约见 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md)
 
 ```json
 {

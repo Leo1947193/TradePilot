@@ -234,7 +234,7 @@ API 对齐说明：
 
 - 本节定义的是**决策综合层内部稳定输出**
 - 该层在公共 HTTP 响应中映射到 `decision_synthesis`
-- 对外字段与机器可读契约以 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml) 为准
+- 对外字段与 API 映射以 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md) 为准
 
 决策综合层对下游暴露的核心字段固定为：
 

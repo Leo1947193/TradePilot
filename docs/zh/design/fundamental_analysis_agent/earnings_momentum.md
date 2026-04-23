@@ -654,7 +654,7 @@ API 对齐说明：
 
 - 本节 Schema 仅用于 `earnings_momentum` 子模块内部契约
 - 不直接作为公共 HTTP API 响应输出
-- 最终对外响应见 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml)
+- 最终对外响应见 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md)
 
 ```json
 {

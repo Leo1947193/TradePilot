@@ -347,7 +347,7 @@ API 对齐说明：
 
 - 本节定义的是**基本面模块内部聚合输出**
 - 该模块在公共 HTTP 响应中映射到 `fundamental_analysis`
-- 对外字段与机器可读契约以 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml) 为准
+- 对外字段与 API 映射以 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md) 为准
 
 ```json
 {

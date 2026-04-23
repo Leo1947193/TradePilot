@@ -23,8 +23,7 @@
 API 对齐说明：
 
 - 本文中的 `decision_synthesis` 与 `trade_plan` 是对外 HTTP API 的核心组装来源
-- 公共响应字段说明见 [../api/schemas.md](../api/schemas.md)
-- 机器可读契约见 [../api/openapi.yaml](../api/openapi.yaml)
+- 公共响应字段与 API 映射见 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md)
 
 ### 2.1 顶层结构
 

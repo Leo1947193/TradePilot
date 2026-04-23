@@ -54,7 +54,7 @@
 - 优先满足 V1 的同步单接口形态，而不是为未来扩展预先引入复杂基础设施
 - 工程环境与命令入口统一，避免同时维护多套 Python 环境管理方式
 
-详细实现约束见 [../implementation/implementation-stack.md](../implementation/implementation-stack.md)。
+详细实现约束见 [../implementation/00_foundation/implementation-stack.md](../implementation/00_foundation/implementation-stack.md)。
 
 ---
 
@@ -233,8 +233,8 @@ V1 固定使用 `PostgreSQL` 作为结果持久化层，负责：
 ### 输出
 
 - 确定性结构化 JSON（在 PRD 中定义）
-- 对外 HTTP API 契约以 [../api/analyses.md](../api/analyses.md)、[../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml) 为准；本目录中的 Schema 主要用于约束内部模块与组装流程
-- coding agent 的实现级约束见 [../implementation/implementation-stack.md](../implementation/implementation-stack.md)、[../implementation/runtime-contract.md](../implementation/runtime-contract.md)、[../implementation/data-sources.md](../implementation/data-sources.md) 和 [../implementation/langgraph-graph.md](../implementation/langgraph-graph.md)
+- 对外 HTTP API 契约与公共响应映射以 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md) 为准；本目录中的 Schema 主要用于约束内部模块与组装流程
+- coding agent 的实现级约束见 [../implementation/00_foundation/implementation-stack.md](../implementation/00_foundation/implementation-stack.md)、[../implementation/01_runtime/runtime-contract.md](../implementation/01_runtime/runtime-contract.md)、[../implementation/02_data/data-sources.md](../implementation/02_data/data-sources.md) 和 [../implementation/01_runtime/langgraph-graph.md](../implementation/01_runtime/langgraph-graph.md)
 
 ---
 

@@ -193,7 +193,7 @@ API 对齐说明：
 
 - 本节定义的是**情绪模块内部聚合输出**
 - 该模块在公共 HTTP 响应中映射到 `sentiment_expectations`
-- 对外字段与机器可读契约以 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml) 为准
+- 对外字段与 API 映射以 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md) 为准
 
 情绪模块对上层主调度器暴露的核心字段保持固定：
 

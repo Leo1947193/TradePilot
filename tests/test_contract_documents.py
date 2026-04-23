@@ -1,31 +1,57 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from pathlib import Path
 
 import pytest
 
+from app.api.main import app
+
 
 ROOT = Path(__file__).resolve().parents[1]
-OPENAPI_PATH = ROOT / "docs/zh/api/openapi.yaml"
-RUNTIME_PATH = ROOT / "docs/zh/implementation/runtime-contract.md"
-GRAPH_PATH = ROOT / "docs/zh/implementation/langgraph-graph.md"
-STACK_PATH = ROOT / "docs/zh/implementation/implementation-stack.md"
+RUNTIME_PATH = ROOT / "docs/zh/implementation/01_runtime/runtime-contract.md"
+GRAPH_PATH = ROOT / "docs/zh/implementation/01_runtime/langgraph-graph.md"
+RESPONSE_PATH = ROOT / "docs/zh/implementation/01_runtime/response-assembly-and-api-mapping.md"
+STACK_PATH = ROOT / "docs/zh/implementation/00_foundation/implementation-stack.md"
+QUALITY_PATH = ROOT / "docs/zh/implementation/06_quality/test-strategy.md"
 
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def schema_block(schema_name: str) -> str:
-    openapi_text = read_text(OPENAPI_PATH)
-    pattern = re.compile(
-        rf"^    {re.escape(schema_name)}:\n(.*?)(?=^    [A-Za-z][A-Za-z0-9]+:|\Z)",
-        re.MULTILINE | re.DOTALL,
-    )
-    match = pattern.search(openapi_text)
-    assert match, f"Schema {schema_name!r} was not found in OpenAPI."
-    return match.group(1)
+@lru_cache(maxsize=1)
+def openapi_schema() -> dict:
+    return app.openapi()
+
+
+def schema_block(schema_name: str) -> dict:
+    schema = openapi_schema()["components"]["schemas"].get(schema_name)
+    assert schema is not None, f"Schema {schema_name!r} was not found in OpenAPI."
+    return schema
+
+
+def field_schema(schema_name: str, field_name: str) -> dict:
+    schema = schema_block(schema_name)
+    properties = schema.get("properties", {})
+    assert field_name in properties, f"Field {field_name!r} was not found in schema {schema_name!r}."
+    return properties[field_name]
+
+
+def _resolve_ref(schema_or_ref: dict) -> dict:
+    ref = schema_or_ref.get("$ref")
+    if ref is None:
+        return schema_or_ref
+    _, _, component_name = ref.rpartition("/")
+    return schema_block(component_name)
+
+
+def enum_values(schema_name: str, field_name: str) -> list[str]:
+    resolved = _resolve_ref(field_schema(schema_name, field_name))
+    values = resolved.get("enum")
+    assert isinstance(values, list), f"Field {field_name!r} in schema {schema_name!r} is not an enum."
+    return values
 
 
 def markdown_section(path: Path, heading_pattern: str) -> str:
@@ -40,20 +66,19 @@ def markdown_section(path: Path, heading_pattern: str) -> str:
 
 
 def test_openapi_declares_only_one_business_endpoint() -> None:
-    text = read_text(OPENAPI_PATH)
-    paths = re.findall(r"^  (/api/v1/[^\s:]+):$", text, flags=re.MULTILINE)
+    schema = openapi_schema()
+    paths = list(schema["paths"])
 
     assert paths == ["/api/v1/analyses"]
-    assert "operationId: createAnalysis" in text
+    assert schema["paths"]["/api/v1/analyses"]["post"]["operationId"] == "create_analysis_api_v1_analyses_post"
 
 
 def test_analyze_request_remains_ticker_only_and_closed() -> None:
     block = schema_block("AnalyzeRequest")
 
-    assert "additionalProperties: false" in block
-    assert re.search(r"required:\n\s+- ticker", block)
-    assert "minLength: 1" in block
-    assert "description: 股票代码。服务端应先 trim 再校验。" in block
+    assert block["additionalProperties"] is False
+    assert block["required"] == ["ticker"]
+    assert field_schema("AnalyzeRequest", "ticker")["minLength"] == 1
 
 
 def test_analysis_response_keeps_fixed_top_level_shape() -> None:
@@ -70,50 +95,45 @@ def test_analysis_response_keeps_fixed_top_level_shape() -> None:
         "trade_plan",
         "sources",
     ):
-        assert f"- {required_field}" in block
+        assert required_field in block["required"]
 
-    assert "additionalProperties: false" in block
-    assert "format: date-time" in block
-    assert "example: '2026-04-16T08:30:00Z'" in block
+    assert block["additionalProperties"] is False
+    assert field_schema("AnalysisResponse", "analysis_time")["format"] == "date-time"
 
 
 @pytest.mark.parametrize(
     ("schema_name", "enum_field", "expected_enum"),
     [
-        ("TechnicalAnalysis", "technical_signal", "enum: [bullish, neutral, bearish]"),
-        ("TechnicalAnalysis", "trend", "enum: [bullish, neutral, bearish]"),
-        ("TechnicalAnalysis", "setup_state", "enum: [actionable, watch, avoid]"),
-        ("FundamentalAnalysis", "fundamental_bias", "enum: [bullish, neutral, bearish, disqualified]"),
-        ("SentimentExpectations", "sentiment_bias", "enum: [bullish, neutral, bearish]"),
-        ("EventDrivenAnalysis", "event_bias", "enum: [bullish, neutral, bearish]"),
-        ("DecisionSynthesis", "overall_bias", "enum: [bullish, neutral, bearish]"),
-        ("DecisionSynthesis", "actionability_state", "enum: [actionable, watch, avoid]"),
-        ("TradePlan", "overall_bias", "enum: [bullish, neutral, bearish]"),
+        ("TechnicalAnalysis", "technical_signal", ["bullish", "neutral", "bearish"]),
+        ("TechnicalAnalysis", "trend", ["bullish", "neutral", "bearish"]),
+        ("TechnicalAnalysis", "setup_state", ["actionable", "watch", "avoid"]),
+        ("FundamentalAnalysis", "fundamental_bias", ["bullish", "neutral", "bearish", "disqualified"]),
+        ("SentimentExpectations", "sentiment_bias", ["bullish", "neutral", "bearish"]),
+        ("EventDrivenAnalysis", "event_bias", ["bullish", "neutral", "bearish"]),
+        ("DecisionSynthesis", "overall_bias", ["bullish", "neutral", "bearish"]),
+        ("DecisionSynthesis", "actionability_state", ["actionable", "watch", "avoid"]),
+        ("TradePlan", "overall_bias", ["bullish", "neutral", "bearish"]),
     ],
 )
 def test_public_enums_stay_lowercase_and_closed(
     schema_name: str,
     enum_field: str,
-    expected_enum: str,
+    expected_enum: list[str],
 ) -> None:
-    block = schema_block(schema_name)
-
-    assert f"{enum_field}:" in block
-    assert expected_enum in block
+    assert enum_values(schema_name, enum_field) == expected_enum
 
 
 def test_decision_synthesis_keeps_range_and_four_module_constraints() -> None:
     block = schema_block("DecisionSynthesis")
 
-    assert "minimum: -1" in block
-    assert "maximum: 1" in block
-    assert "confidence_score:" in block
-    assert re.search(r"confidence_score:\n\s+type: number\n\s+minimum: 0\n\s+maximum: 1", block)
-    assert "module_contributions:" in block
-    assert "minItems: 4" in block
-    assert "maxItems: 4" in block
-    assert "weight_scheme_used:" in block
-    assert "blocking_flags:" in block
+    assert field_schema("DecisionSynthesis", "bias_score")["minimum"] == -1.0
+    assert field_schema("DecisionSynthesis", "bias_score")["maximum"] == 1.0
+    assert field_schema("DecisionSynthesis", "confidence_score")["minimum"] == 0.0
+    assert field_schema("DecisionSynthesis", "confidence_score")["maximum"] == 1.0
+    assert field_schema("DecisionSynthesis", "module_contributions")["minItems"] == 4
+    assert field_schema("DecisionSynthesis", "module_contributions")["maxItems"] == 4
+    assert "weight_scheme_used" in block["required"]
+    assert "blocking_flags" in block["required"]
 
 
 def test_trade_plan_requires_both_directional_scenarios() -> None:
@@ -126,118 +146,102 @@ def test_trade_plan_requires_both_directional_scenarios() -> None:
         "bearish_scenario",
         "do_not_trade_conditions",
     ):
-        assert f"- {required_field}" in block
+        assert required_field in block["required"]
 
     for required_field in ("entry_idea", "take_profit", "stop_loss"):
-        assert f"- {required_field}" in scenario_block
+        assert required_field in scenario_block["required"]
 
 
 def test_source_schema_requires_type_name_and_uri() -> None:
     block = schema_block("Source")
 
     for required_field in ("type", "name", "url"):
-        assert f"- {required_field}" in block
+        assert required_field in block["required"]
 
-    assert "format: uri" in block
-    assert "enum: [technical, financial, news, macro, event]" in block
+    assert field_schema("Source", "url")["format"] == "uri"
+    assert enum_values("Source", "type") == ["technical", "financial", "news", "macro", "event"]
 
 
 def test_error_response_structure_is_stable_across_status_codes() -> None:
-    openapi_text = read_text(OPENAPI_PATH)
-    response_block = re.search(
-        r"responses:\n(.*?)(?=^components:)",
-        openapi_text,
-        flags=re.MULTILINE | re.DOTALL,
-    )
-    assert response_block, "Response block was not found in OpenAPI."
-    response_text = response_block.group(1)
+    response_block = openapi_schema()["paths"]["/api/v1/analyses"]["post"]["responses"]
 
-    for status_code in ("'200':", "'400':", "'404':", "'422':", "'503':", "'500':"):
-        assert status_code in response_text
+    for status_code in ("200", "400", "404", "422", "503", "500"):
+        assert status_code in response_block
 
     error_response = schema_block("ErrorResponse")
     error_object = schema_block("ErrorObject")
     error_detail = schema_block("ErrorDetail")
 
-    assert "required:" in error_response
-    assert "- error" in error_response
+    assert error_response["required"] == ["error"]
 
     for required_field in ("code", "message"):
-        assert f"- {required_field}" in error_object
+        assert required_field in error_object["required"]
 
     for required_field in ("field", "reason"):
-        assert f"- {required_field}" in error_detail
+        assert required_field in error_detail["required"]
 
 
 def test_runtime_status_code_boundaries_match_spec() -> None:
-    status_section = markdown_section(RUNTIME_PATH, r"## 6\. 状态码边界")
+    success_section = markdown_section(RESPONSE_PATH, r"## 7\. API 成功路径映射")
+    error_section = markdown_section(RESPONSE_PATH, r"## 8\. API 错误路径映射")
 
-    expected_markers = {
-        "200": "分析结果已成功持久化到 `PostgreSQL`",
-        "400": "存在不允许的额外字段",
-        "404": "ticker 无法映射到受支持的标的",
-        "422": "无法建立最小分析上下文",
-        "503": "`PostgreSQL` 在请求内不可用或写入超时",
-        "500": "响应组装违反内部契约",
-    }
-
-    for status_code, marker in expected_markers.items():
-        assert f"### 6.{('1' if status_code == '200' else {'400': '2', '404': '3', '422': '4', '503': '5', '500': '6'}[status_code])} 返回 `{status_code}" in status_section
-        assert marker in status_section
+    assert "graph 产出的 `response` 是唯一成功返回体" in success_section
+    assert "### 8.1 400 `invalid_request`" in error_section
+    assert "### 8.2 503 `upstream_unavailable`" in error_section
+    assert "### 8.3 500 `internal_error`" in error_section
+    assert "analysis persistence is unavailable" in error_section
+    assert "analysis pipeline failed unexpectedly" in error_section
 
 
 def test_runtime_allows_degradation_only_for_four_analysis_modules() -> None:
-    degradation_section = markdown_section(RUNTIME_PATH, r"## 7\. 降级规则")
+    error_section = markdown_section(RUNTIME_PATH, r"## 6\. 错误处理契约")
+    graph_section = markdown_section(GRAPH_PATH, r"## 7\. 当前 graph 的执行语义")
 
-    for module_name in ("technical", "fundamental", "sentiment", "event"):
-        assert f"- {module_name}" in degradation_section
+    for module_name in ("run_technical", "run_fundamental", "run_sentiment", "run_event"):
+        assert module_name in error_section
 
-    for node_name in (
-        "validate_request",
-        "prepare_context",
-        "assemble_response",
-        "persist_analysis",
-    ):
-        assert f"- `{node_name}`" in degradation_section
-
-    assert "不允许静默跳过" in read_text(GRAPH_PATH)
+    assert "降级为 placeholder `DEGRADED`" in error_section
+    assert "回退到 degraded placeholder" in error_section
+    assert "当前 API 不会把“响应已生成但持久化失败”的半成功结果返回给客户端" in error_section
+    assert "节点若抛异常，则 graph 直接失败" in graph_section
 
 
 def test_runtime_retry_policy_is_whitelisted_to_external_fetches() -> None:
-    retry_section = markdown_section(RUNTIME_PATH, r"## 5\. 重试策略")
+    foundation_text = read_text(STACK_PATH)
+    graph_section = markdown_section(GRAPH_PATH, r"## 7\. 当前 graph 的执行语义")
 
-    assert "只有外部数据获取允许自动重试" in retry_section
-    assert "最多 `1` 次重试" in retry_section
-
-    for forbidden_case in (
-        "`4xx` 参数错误",
-        "PostgreSQL 写入失败",
-        "内部规则异常",
-    ):
-        assert forbidden_case in retry_section
+    assert "自动重试框架" in foundation_text
+    assert "没有启用：" in graph_section
+    assert "- retries" in graph_section
+    assert "不要让 graph 自行猜测重跑" in read_text(GRAPH_PATH)
 
 
 def test_graph_execution_order_and_parallel_boundary_are_fixed() -> None:
     text = read_text(GRAPH_PATH)
+    for marker in (
+        "V --> C[prepare_context]",
+        "C --> T[run_technical]",
+        "C --> F[run_fundamental]",
+        "C --> S[run_sentiment]",
+        "C --> E[run_event]",
+        "T --> D[synthesize_decision]",
+        "D --> P[generate_trade_plan]",
+        "P --> A[assemble_response]",
+        "A --> R[persist_analysis]",
+    ):
+        assert marker in text
 
-    expected_flow = """validate_request
-  -> prepare_context
-  -> [run_technical, run_fundamental, run_sentiment, run_event]
-  -> synthesize_decision
-  -> generate_trade_plan
-  -> assemble_response
-  -> persist_analysis"""
-
-    assert expected_flow in text
-    assert "以下四个节点必须并行执行：" in text
-    assert "`synthesize_decision` 必须等四个分析分支都结束" in text
-    assert "`generate_trade_plan` 只能消费决策综合结果" in text
+    assert "四个分析模块之间没有显式依赖，必须允许并行。" in text
+    assert "`synthesize_decision` 必须等待四个模块都完成。" in text
+    assert "`trade_plan` 必须依赖综合结论，不能提前生成。" in text
 
 
 def test_docs_keep_testing_strategy_aligned_with_contract_first_scope() -> None:
     stack_text = read_text(STACK_PATH)
+    quality_text = read_text(QUALITY_PATH)
 
     assert "1. API 契约测试" in stack_text
     assert "2. Graph 流程测试" in stack_text
-    assert "3. 规则单元测试" in stack_text
-    assert "使用 `uv` 管理依赖与虚拟环境" in stack_text
+    assert "3. Schema/状态模型测试" in stack_text
+    assert "统一使用 `uv`" in stack_text
+    assert "L1: 纯规则单元测试" in quality_text

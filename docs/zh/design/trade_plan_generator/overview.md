@@ -318,7 +318,7 @@ API 对齐说明：
 
 - 本节定义的是**交易计划生成器输出**
 - 该模块在公共 HTTP 响应中映射到 `trade_plan`
-- 对外字段与机器可读契约以 [../api/schemas.md](../api/schemas.md) 和 [../api/openapi.yaml](../api/openapi.yaml) 为准
+- 对外字段与 API 映射以 [../implementation/01_runtime/response-assembly-and-api-mapping.md](../implementation/01_runtime/response-assembly-and-api-mapping.md) 为准
 
 交易计划生成器对上层组装器暴露固定字段：
 
