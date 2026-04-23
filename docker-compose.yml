@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16
+    container_name: tradepilot-db
+    environment:
+      POSTGRES_USER: tradepilot
+      POSTGRES_PASSWORD: tradepilot
+      POSTGRES_DB: tradepilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - tradepilot-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tradepilot-app
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: tradepilot
+      POSTGRES_PASSWORD: tradepilot
+      POSTGRES_DB: tradepilot
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: ["uv", "run", "uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  tradepilot-postgres-data:

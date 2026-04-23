@@ -1,6 +1,6 @@
 # TradePilot
 
-TradePilot 是一个面向美股分析场景的 contract-first 后端服务。它接收一个股票代码，沿固定的 LangGraph 主链路执行技术面、基本面、情绪面、事件面分析，综合生成结构化结论与交易计划，并把结果持久化到 PostgreSQL。
+TradePilot 是一个面向美股分析场景的 contract-first 后端服务。它接收一个股票代码，沿固定的 LangGraph 主链路执行技术面、基本面、情绪面、事件面分析，综合生成结构化结论与交易计划，并把结果持久化到 Docker Compose 管理的 PostgreSQL。
 
 当前仓库重点是：
 
@@ -92,53 +92,72 @@ uv sync
 
 ### 4.2 创建并填写 `.env`
 
-项目通过根目录 `.env` 读取配置。当前至少需要数据库连接：
+项目通过根目录 `.env` 读取配置。数据库默认走 Docker Compose 内的 `db` 服务，推荐直接使用分项配置：
 
 ```env
-postgres_dsn=postgresql://user:pass@localhost:5432/tradepilot
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_USER=tradepilot
+POSTGRES_PASSWORD=tradepilot
+POSTGRES_DB=tradepilot
+```
+
+如果你已经有一条现成连接串，也可以继续使用：
+
+```env
+POSTGRES_DSN=postgresql://tradepilot:tradepilot@db:5432/tradepilot
 ```
 
 如果你要启用新闻 provider：
 
 ```env
-news_provider=finnhub
-news_api_key=your_finnhub_key
+NEWS_PROVIDER=finnhub
+NEWS_API_KEY=your_finnhub_key
 ```
 
 如果你要启用静态宏观日历 provider：
 
 ```env
-macro_calendar_path=/absolute/path/to/macro_calendar.json
+MACRO_CALENDAR_PATH=/absolute/path/to/macro_calendar.json
 ```
 
 如果你要启用 LLM adapter，并切到 MiniMax：
 
 ```env
-llm_provider=minimax
-llm_model=minimax-m2.7
-minimax_api_key=your_minimax_key
+LLM_PROVIDER=minimax
+LLM_MODEL=minimax-m2.7
+MINIMAX_API_KEY=your_minimax_key
 ```
 
 可选项：
 
 ```env
-market_data_provider=yfinance
-request_timeout_seconds=8.0
-minimax_base_url=https://api.minimax.io/v1
+MARKET_DATA_PROVIDER=yfinance
+REQUEST_TIMEOUT_SECONDS=8.0
+MINIMAX_BASE_URL=https://api.minimax.io/v1
 ```
 
 说明：
 
-- `.env` 里的字段当前按小写 key 读取，例如 `llm_provider`、`llm_model`
-- `postgres_dsn` 是必填项；没有它，应用不会正常初始化数据库连接
+- 推荐使用大写环境变量名；`POSTGRES_DSN` 仍兼容，但会优先覆盖 `POSTGRES_HOST/PORT/USER/PASSWORD/DB`
+- 若未显式提供 `POSTGRES_DSN`，应用会按上述五个字段自动拼接 PostgreSQL 连接串
+- Docker Compose 内部必须使用 `db` 作为数据库主机名，不能写成容器内无效的 `localhost`
 - 如果 persistence repository 不可用，API 会返回 `503`
 
-### 4.3 执行数据库迁移
+### 4.3 启动 Docker 容器
 
-先执行：
+先启动 PostgreSQL 和 API 容器：
 
 ```bash
-uv run python -m app.db.migrate up
+docker compose up -d --build
+```
+
+### 4.4 执行数据库迁移
+
+数据库迁移应在应用容器内执行，这样能直接复用容器内的数据库配置：
+
+```bash
+docker compose exec app uv run python -m app.db.migrate up
 ```
 
 如果成功，会输出：
@@ -147,7 +166,9 @@ uv run python -m app.db.migrate up
 Applied migrations: 0001
 ```
 
-### 4.4 启动服务
+### 4.5 本地调试模式
+
+如果你只想本地运行 Python 进程、继续复用容器内 PostgreSQL，可以执行：
 
 ```bash
 uv run uvicorn app.api.main:app --reload
@@ -157,6 +178,16 @@ uv run uvicorn app.api.main:app --reload
 
 ```text
 http://127.0.0.1:8000
+```
+
+此时请确保 `.env` 里的数据库主机仍然指向 Docker 暴露给宿主机的地址，例如：
+
+```env
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+POSTGRES_USER=tradepilot
+POSTGRES_PASSWORD=tradepilot
+POSTGRES_DB=tradepilot
 ```
 
 注意：

@@ -23,7 +23,7 @@
 | Schema | `Pydantic v2` + `pydantic-settings` | 请求/响应模型、graph state、provider DTO、环境变量 |
 | 编排 | `LangGraph` | 固定执行图与并行分支 |
 | 外部数据接入 | `httpx`、`yfinance` | 新闻与市场/财务/公司事件 provider |
-| 存储 | `PostgreSQL` + `psycopg` + `psycopg_pool` | 持久化分析结果 |
+| 存储 | `Docker Compose` + `PostgreSQL` + `psycopg` + `psycopg_pool` | 在容器内提供数据库并持久化分析结果 |
 | 测试 | `pytest`、`pytest-asyncio` | API、graph、schema、provider、repository 测试 |
 | 工程命令 | `uv` | 依赖、虚拟环境、命令入口 |
 
@@ -108,10 +108,16 @@ uv run uvicorn app.api.main:app --reload
 当前仓库已有迁移脚本入口 [`app/db/migrate.py`](/Users/leo/Dev/TradePilot/app/db/migrate.py:1)。推荐命令约定：
 
 ```bash
-uv run python -m app.db.migrate
+docker compose exec app uv run python -m app.db.migrate up
 ```
 
-如果后续为迁移增加 CLI 参数，也应继续通过 `uv run python -m ...` 暴露，而不是引入独立 shell 脚本体系。
+如果只启动了数据库容器、未启动 `app` 容器，则本地 Python 进程仍可用：
+
+```bash
+uv run python -m app.db.migrate up
+```
+
+但此时 `.env` 中的 `POSTGRES_HOST` 应改成宿主机可达地址，例如 `127.0.0.1`，不能继续使用容器内服务名 `db`。
 
 ---
 
@@ -122,6 +128,11 @@ uv run python -m app.db.migrate
 现有环境变量：
 
 - `POSTGRES_DSN`
+- `POSTGRES_HOST`
+- `POSTGRES_PORT`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
 - `POSTGRES_MIN_POOL_SIZE`
 - `POSTGRES_MAX_POOL_SIZE`
 - `POSTGRES_CONNECT_TIMEOUT_SECONDS`
@@ -141,6 +152,8 @@ uv run python -m app.db.migrate
 
 - 新增运行时配置，先放入 `Settings`，不要散落读取 `os.environ`
 - 配置名统一使用大写 snake case 环境变量，对应 `Settings` 使用小写字段
+- PostgreSQL 配置默认按 `POSTGRES_HOST/PORT/USER/PASSWORD/DB` 组装，`POSTGRES_DSN` 只作为显式覆盖入口
+- 在 Docker Compose 内运行时，数据库主机名固定写服务名 `db`；不要在容器内使用 `localhost`
 - provider 选择类开关必须通过 `Settings` 控制，不能硬编码在路由或 graph builder
 - `LLM_PROVIDER` 负责选择厂商，`LLM_MODEL` 负责选择该厂商下的具体模型；切换模型时应只改 `.env`
 - 未被当前 `LLM_PROVIDER` 选中的厂商凭证，不应阻塞应用启动或 adapter 构建

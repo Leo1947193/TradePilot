@@ -7,6 +7,10 @@ from app.services.llm.factory import LlmProviderConfigurationError, build_llm_ad
 from app.services.llm.minimax_adapter import MiniMaxLlmAdapter
 
 
+def make_settings(**overrides) -> Settings:
+    return Settings(_env_file=None, **overrides)
+
+
 def test_settings_include_llm_env_vars(monkeypatch) -> None:
     monkeypatch.setenv("POSTGRES_DSN", "postgresql://user:pass@localhost:5432/tradepilot")
     monkeypatch.setenv("LLM_PROVIDER", "minimax")
@@ -14,7 +18,7 @@ def test_settings_include_llm_env_vars(monkeypatch) -> None:
     monkeypatch.setenv("MINIMAX_API_KEY", "demo-key")
     monkeypatch.setenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
 
-    settings = Settings()
+    settings = make_settings()
 
     assert settings.llm_provider == "minimax"
     assert settings.llm_model == "MiniMax-M2.5"
@@ -23,14 +27,14 @@ def test_settings_include_llm_env_vars(monkeypatch) -> None:
 
 
 def test_build_llm_adapter_requires_provider() -> None:
-    settings = Settings(postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot")
+    settings = make_settings(postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot")
 
     with pytest.raises(LlmProviderConfigurationError, match="LLM_PROVIDER"):
         build_llm_adapter(settings)
 
 
 def test_build_llm_adapter_rejects_unsupported_provider() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         llm_provider="unsupported",
     )
@@ -40,7 +44,7 @@ def test_build_llm_adapter_rejects_unsupported_provider() -> None:
 
 
 def test_build_llm_adapter_requires_model_and_minimax_api_key() -> None:
-    missing_model = Settings(
+    missing_model = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         llm_provider="minimax",
         minimax_api_key="demo-key",
@@ -48,7 +52,7 @@ def test_build_llm_adapter_requires_model_and_minimax_api_key() -> None:
     with pytest.raises(LlmProviderConfigurationError, match="LLM_MODEL"):
         build_llm_adapter(missing_model)
 
-    missing_key = Settings(
+    missing_key = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         llm_provider="minimax",
         llm_model="MiniMax-M2.5",
@@ -58,7 +62,7 @@ def test_build_llm_adapter_requires_model_and_minimax_api_key() -> None:
 
 
 def test_build_llm_adapter_returns_minimax_adapter() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         llm_provider="minimax",
         llm_model="MiniMax-M2.5",

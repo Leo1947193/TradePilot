@@ -12,6 +12,12 @@
 
 本文只讨论“分析结果持久化”，不讨论缓存或 checkpoint。
 
+数据库运行假设：
+
+- 默认通过 `docker-compose.yml` 启动 PostgreSQL 容器
+- 应用容器内连接数据库时使用服务名 `db`
+- 仅在宿主机直接运行 Python 进程时，才把 `POSTGRES_HOST` 改成 `127.0.0.1`
+
 ---
 
 ## 2. 当前主链路位置

@@ -20,6 +20,32 @@ def test_settings_load_expected_env_vars(monkeypatch) -> None:
     assert settings.postgres_connect_timeout_seconds == 7.5
 
 
+def test_settings_build_postgres_dsn_from_container_env_vars(monkeypatch) -> None:
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
+    monkeypatch.setenv("POSTGRES_HOST", "db")
+    monkeypatch.setenv("POSTGRES_PORT", "5432")
+    monkeypatch.setenv("POSTGRES_USER", "tradepilot")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "tradepilot")
+    monkeypatch.setenv("POSTGRES_DB", "tradepilot")
+
+    settings = Settings()
+
+    assert settings.postgres_dsn == "postgresql://tradepilot:tradepilot@db:5432/tradepilot"
+
+
+def test_explicit_postgres_dsn_takes_precedence_over_container_fields() -> None:
+    settings = Settings(
+        postgres_dsn="postgresql://override:secret@postgres.internal:5433/analytics",
+        postgres_host="db",
+        postgres_port=5432,
+        postgres_user="tradepilot",
+        postgres_password="tradepilot",
+        postgres_db="tradepilot",
+    )
+
+    assert settings.postgres_dsn == "postgresql://override:secret@postgres.internal:5433/analytics"
+
+
 def test_create_connection_pool_passes_expected_arguments(monkeypatch) -> None:
     captured_kwargs: dict[str, object] = {}
 

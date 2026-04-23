@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 
 import pytest
@@ -19,6 +19,10 @@ from app.services.providers.finnhub_news_provider import FinnhubNewsProvider
 from app.services.providers.yfinance_provider import YFinanceProvider
 
 
+def make_settings(**overrides) -> Settings:
+    return Settings(_env_file=None, **overrides)
+
+
 def test_settings_include_provider_env_vars(monkeypatch) -> None:
     monkeypatch.setenv("POSTGRES_DSN", "postgresql://user:pass@localhost:5432/tradepilot")
     monkeypatch.setenv("NEWS_API_KEY", "demo-key")
@@ -27,7 +31,7 @@ def test_settings_include_provider_env_vars(monkeypatch) -> None:
     monkeypatch.setenv("MACRO_CALENDAR_PATH", "/tmp/macro.json")
     monkeypatch.setenv("REQUEST_TIMEOUT_SECONDS", "12.5")
 
-    settings = Settings()
+    settings = make_settings()
 
     assert settings.news_api_key == "demo-key"
     assert settings.market_data_provider == "yfinance"
@@ -37,13 +41,14 @@ def test_settings_include_provider_env_vars(monkeypatch) -> None:
 
 
 def test_build_macro_calendar_provider_requires_configured_path() -> None:
-    settings = Settings(postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot")
+    settings = make_settings(postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot")
 
     with pytest.raises(ProviderConfigurationError, match="MACRO_CALENDAR_PATH"):
         build_macro_calendar_provider(settings)
 
 
 def test_build_macro_calendar_provider_returns_working_static_provider(tmp_path) -> None:
+    scheduled_at = datetime.now(UTC) + timedelta(days=2)
     calendar_path = tmp_path / "macro_calendar.json"
     calendar_path.write_text(
         json.dumps(
@@ -52,14 +57,14 @@ def test_build_macro_calendar_provider_returns_working_static_provider(tmp_path)
                     "event_name": "CPI",
                     "country": "US",
                     "category": "inflation",
-                    "scheduled_at": "2026-04-19T12:30:00Z",
+                    "scheduled_at": scheduled_at.isoformat().replace("+00:00", "Z"),
                     "importance": "high",
                 }
             ]
         ),
         encoding="utf-8",
     )
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         macro_calendar_path=str(calendar_path),
     )
@@ -74,11 +79,11 @@ def test_build_macro_calendar_provider_returns_working_static_provider(tmp_path)
 
     assert len(events) == 1
     assert events[0].event_name == "CPI"
-    assert events[0].scheduled_at == datetime(2026, 4, 19, 12, 30, tzinfo=UTC)
+    assert events[0].scheduled_at == scheduled_at
 
 
 def test_factory_builds_yfinance_backed_default_providers() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         market_data_provider="yfinance",
     )
@@ -93,7 +98,7 @@ def test_factory_builds_yfinance_backed_default_providers() -> None:
 
 
 def test_factory_rejects_unsupported_market_data_provider() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         market_data_provider="unsupported",
     )
@@ -103,7 +108,7 @@ def test_factory_rejects_unsupported_market_data_provider() -> None:
 
 
 def test_factory_builds_finnhub_news_provider_when_configured() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         news_provider="finnhub",
         news_api_key="demo-key",
@@ -117,7 +122,7 @@ def test_factory_builds_finnhub_news_provider_when_configured() -> None:
 
 
 def test_factory_requires_news_api_key_for_finnhub() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         news_provider="finnhub",
     )
@@ -127,7 +132,7 @@ def test_factory_requires_news_api_key_for_finnhub() -> None:
 
 
 def test_factory_rejects_unsupported_news_provider() -> None:
-    settings = Settings(
+    settings = make_settings(
         postgres_dsn="postgresql://user:pass@localhost:5432/tradepilot",
         news_provider="unsupported",
     )
