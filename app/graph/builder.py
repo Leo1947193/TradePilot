@@ -9,9 +9,13 @@ from app.graph.nodes.generate_trade_plan import generate_trade_plan
 from app.graph.nodes.persist_analysis import persist_analysis
 from app.graph.nodes.prepare_context import prepare_context
 from app.graph.nodes.run_event import run_event
+from app.graph.nodes.run_event import EVENT_DEGRADED_WARNING
 from app.graph.nodes.run_fundamental import run_fundamental
+from app.graph.nodes.run_fundamental import FUNDAMENTAL_DEGRADED_WARNING
 from app.graph.nodes.run_sentiment import run_sentiment
+from app.graph.nodes.run_sentiment import SENTIMENT_DEGRADED_WARNING
 from app.graph.nodes.run_technical import run_technical
+from app.graph.nodes.run_technical import TECHNICAL_DEGRADED_WARNING
 from app.graph.nodes.synthesize_decision import synthesize_decision
 from app.graph.nodes.validate_request import validate_request
 from app.repositories.analysis_reports import AnalysisReportRepository
@@ -44,6 +48,10 @@ def _merge_diagnostics(left: dict[str, Any] | None, right: dict[str, Any] | None
                 if item not in merged[key]:
                     merged[key].append(item)
 
+    merged["degraded_modules"] = _sort_module_names(merged["degraded_modules"])
+    merged["excluded_modules"] = _sort_module_names(merged["excluded_modules"])
+    merged["warnings"] = _sort_diagnostic_warnings(merged["warnings"])
+
     return merged
 
 
@@ -75,6 +83,32 @@ def _merge_sources(
             str(payload.get("name")),
             str(payload.get("url")),
         ),
+    )
+
+
+def _sort_module_names(modules: list[str]) -> list[str]:
+    module_order = {
+        "technical": 0,
+        "fundamental": 1,
+        "sentiment": 2,
+        "event": 3,
+    }
+    return sorted(
+        modules,
+        key=lambda module: (module_order.get(module, 99), module),
+    )
+
+
+def _sort_diagnostic_warnings(warnings: list[str]) -> list[str]:
+    warning_order = {
+        TECHNICAL_DEGRADED_WARNING: 0,
+        FUNDAMENTAL_DEGRADED_WARNING: 1,
+        SENTIMENT_DEGRADED_WARNING: 2,
+        EVENT_DEGRADED_WARNING: 3,
+    }
+    return sorted(
+        warnings,
+        key=lambda warning: (warning_order.get(warning, 99), warnings.index(warning)),
     )
 
 

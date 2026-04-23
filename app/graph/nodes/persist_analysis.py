@@ -43,11 +43,18 @@ def persist_analysis(
     try:
         persisted_record = repository.save_analysis_report(payload)
     except Exception as exc:
+        error_message = str(exc)
+        diagnostics_errors = list(validated_state.diagnostics.errors)
+        if error_message not in diagnostics_errors:
+            diagnostics_errors.append(error_message)
+        validated_state.diagnostics = validated_state.diagnostics.model_copy(
+            update={"errors": diagnostics_errors}
+        )
         validated_state.persistence = PersistenceState(
             status=PersistenceStatus.FAILED,
             record_id=None,
             persisted_at=None,
-            error=str(exc),
+            error=error_message,
         )
         raise RuntimeError("analysis report persistence failed") from exc
 
