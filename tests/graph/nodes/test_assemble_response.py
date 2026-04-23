@@ -219,3 +219,89 @@ def test_assemble_response_maps_module_directions_into_public_payloads() -> None
     assert state.response.sentiment_expectations.news_tone == "positive"
     assert state.response.event_driven_analysis.event_bias == "bearish"
     assert state.response.event_driven_analysis.event_risk_flags == ["macro_event_high_sensitivity"]
+
+
+def test_assemble_response_prefers_richer_module_reports_when_available() -> None:
+    base_state = build_pipeline_state()
+    pipeline_state = base_state.model_copy(
+        update={
+            "module_results": ModuleResults.model_validate(
+                {
+                    "technical": {
+                        "module": "technical",
+                        "status": "usable",
+                        "summary": "Trend remains constructive.",
+                        "direction": "bullish",
+                        "data_completeness_pct": 90,
+                    },
+                    "fundamental": {
+                        "module": "fundamental",
+                        "status": "usable",
+                        "summary": "Profitability remains solid.",
+                        "direction": "bullish",
+                        "data_completeness_pct": 100,
+                    },
+                    "sentiment": {
+                        "module": "sentiment",
+                        "status": "usable",
+                        "summary": "Coverage leans positive.",
+                        "direction": "bullish",
+                        "data_completeness_pct": 80,
+                    },
+                    "event": {
+                        "module": "event",
+                        "status": "usable",
+                        "summary": "Near-term event risk remains elevated.",
+                        "direction": "bearish",
+                        "data_completeness_pct": 100,
+                    },
+                }
+            ),
+            "module_reports": {
+                "technical": {
+                    "trend": "bullish",
+                    "key_support": [191.5, 188.0],
+                    "key_resistance": [198.0, 202.5],
+                    "volume_pattern": "accumulation",
+                    "entry_trigger": "Watch for a move above 196.50 to confirm vcp.",
+                    "target_price": 208.0,
+                    "stop_loss_price": 191.0,
+                    "risk_reward_ratio": 2.3,
+                    "risk_flags": ["event_overhang"],
+                    "summary": "Momentum remains constructive.",
+                },
+                "fundamental": {
+                    "summary": "Integrated fundamental view remains constructive.",
+                    "key_risks": ["financial_health_disqualify"],
+                    "subresults": {
+                        "financial_snapshot": {
+                            "key_metrics": ["market cap 3000000000", "PE 28.20", "EPS 6.50"]
+                        }
+                    },
+                },
+                "sentiment": {
+                    "news_tone": "positive",
+                    "market_expectation": "Expectations are constructive with stable signals.",
+                    "key_risks": ["crowded_narrative"],
+                },
+                "event": {
+                    "upcoming_catalysts": ["Vision product launch"],
+                    "risk_events": ["AAPL earnings"],
+                    "event_risk_flags": ["binary_event_imminent"],
+                },
+            },
+        }
+    )
+
+    state = assemble_response(pipeline_state)
+
+    assert state.response is not None
+    assert state.response.technical_analysis.key_support == [191.5, 188.0]
+    assert state.response.technical_analysis.entry_trigger == "Watch for a move above 196.50 to confirm vcp."
+    assert state.response.fundamental_analysis.growth == "market cap 3000000000"
+    assert state.response.fundamental_analysis.valuation_view == "PE 28.20"
+    assert state.response.sentiment_expectations.market_expectation == "Expectations are constructive with stable signals."
+    assert state.response.sentiment_expectations.key_risks == ["crowded_narrative"]
+    assert state.response.event_driven_analysis.upcoming_catalysts == ["Vision product launch"]
+    assert state.response.event_driven_analysis.risk_events == ["AAPL earnings"]
+    assert state.response.event_driven_analysis.event_risk_flags == ["binary_event_imminent"]

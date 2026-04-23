@@ -18,6 +18,7 @@ class DecisionSignal:
 
 
 def analyze_decision_signal(
+    normalized_signals,
     module_contributions: list[ModuleContribution],
     *,
     available_weight_ratio: float,
@@ -26,7 +27,7 @@ def analyze_decision_signal(
     bias_score = sum(contribution.contribution or 0.0 for contribution in module_contributions)
     overall_bias = _resolve_overall_bias(bias_score)
     conflict_state = _determine_conflict_state(module_contributions)
-    blocking_flags = _build_blocking_flags(module_contributions)
+    blocking_flags = _build_blocking_flags(normalized_signals, module_contributions)
     confidence_score = _calculate_confidence(
         module_contributions,
         overall_bias=overall_bias,
@@ -115,8 +116,19 @@ def _resolve_actionability(
     return TechnicalSetupState.ACTIONABLE
 
 
-def _build_blocking_flags(module_contributions: list[ModuleContribution]) -> list[str]:
+def _build_blocking_flags(normalized_signals, module_contributions: list[ModuleContribution]) -> list[str]:
     flags: list[str] = []
+
+    event_signal = next(
+        (signal for signal in normalized_signals if signal.module == ModuleName.EVENT),
+        None,
+    )
+    if event_signal is not None:
+        for flag in event_signal.blocking_flags:
+            if flag not in flags:
+                flags.append(flag)
+    if flags:
+        return flags
 
     event_contribution = next(
         (contribution for contribution in module_contributions if contribution.module == ModuleName.EVENT),

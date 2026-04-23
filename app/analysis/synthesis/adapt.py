@@ -10,20 +10,29 @@ from app.rules.decision import (
     MODULE_ORDER,
 )
 from app.schemas.api import FundamentalBias, ModuleName, ModuleStatus
-from app.schemas.graph_state import ModuleResults
+from app.schemas.graph_state import ModuleReports, ModuleResults
 from app.schemas.modules import AnalysisDirection, AnalysisModuleResult, ModuleExecutionStatus
 
 
-def adapt_module_signals(module_results: ModuleResults) -> list[NormalizedModuleSignal]:
+def adapt_module_signals(
+    module_results: ModuleResults,
+    module_reports: ModuleReports | None = None,
+) -> list[NormalizedModuleSignal]:
     result_by_module = {
         ModuleName.TECHNICAL: module_results.technical,
         ModuleName.FUNDAMENTAL: module_results.fundamental,
         ModuleName.SENTIMENT: module_results.sentiment,
         ModuleName.EVENT: module_results.event,
     }
+    report_by_module = {
+        ModuleName.TECHNICAL: module_reports.technical if module_reports else None,
+        ModuleName.FUNDAMENTAL: module_reports.fundamental if module_reports else None,
+        ModuleName.SENTIMENT: module_reports.sentiment if module_reports else None,
+        ModuleName.EVENT: module_reports.event if module_reports else None,
+    }
 
     return [
-        adapt_module_signal(module=module, result=result_by_module[module])
+        adapt_module_signal(module=module, result=result_by_module[module], report=report_by_module[module])
         for module in MODULE_ORDER
     ]
 
@@ -31,6 +40,7 @@ def adapt_module_signals(module_results: ModuleResults) -> list[NormalizedModule
 def adapt_module_signal(
     module: ModuleName,
     result: AnalysisModuleResult | None,
+    report: dict | None = None,
 ) -> NormalizedModuleSignal:
     if result is None:
         return NormalizedModuleSignal(
@@ -55,6 +65,8 @@ def adapt_module_signal(
         configured_weight=CONFIGURED_WEIGHTS[module],
         data_completeness_pct=_resolve_data_completeness(result),
         low_confidence=result.low_confidence,
+        blocking_flags=_resolve_blocking_flags(module, report),
+        key_risks=_resolve_key_risks(report),
         summary=result.summary or result.reason,
     )
 
@@ -84,3 +96,17 @@ def _resolve_data_completeness(result: AnalysisModuleResult) -> float | None:
     if result.status == ModuleExecutionStatus.DEGRADED:
         return DEGRADED_COMPLETENESS_PROXY
     return 100.0
+
+
+def _resolve_blocking_flags(module: ModuleName, report: dict | None) -> list[str]:
+    if module != ModuleName.EVENT or not isinstance(report, dict):
+        return []
+    flags = report.get("event_risk_flags")
+    return [str(flag) for flag in flags] if isinstance(flags, list) else []
+
+
+def _resolve_key_risks(report: dict | None) -> list[str]:
+    if not isinstance(report, dict):
+        return []
+    risks = report.get("key_risks") or report.get("risk_events")
+    return [str(risk) for risk in risks] if isinstance(risks, list) else []

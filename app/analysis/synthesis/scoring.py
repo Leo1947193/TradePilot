@@ -47,6 +47,7 @@ def score_decision(normalized_signals: list[NormalizedModuleSignal]) -> ScoredDe
     ]
 
     decision_signal = analyze_decision_signal(
+        normalized_signals,
         module_contributions,
         available_weight_ratio=available_weight_ratio,
         usable_module_count=len(usable_modules),
