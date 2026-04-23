@@ -155,3 +155,59 @@ def test_synthesize_decision_promotes_weighted_usable_modules_to_actionable_bias
     assert state.decision_synthesis.actionability_state == TechnicalSetupState.ACTIONABLE
     assert state.decision_synthesis.blocking_flags == []
     assert state.decision_synthesis.confidence_score > 0.7
+
+
+def test_synthesize_decision_excluded_module_is_removed_from_applied_weights_and_surfaces_risk() -> None:
+    state = synthesize_decision(
+        {
+            "request": {"ticker": "AAPL"},
+            "normalized_ticker": "AAPL",
+            "request_id": "req_excluded",
+            "module_results": {
+                "technical": {
+                    "module": "technical",
+                    "status": "excluded",
+                    "summary": "Technical signal excluded due to unusable market context.",
+                    "direction": "neutral",
+                    "reason": "technical_context_excluded",
+                },
+                "fundamental": {
+                    "module": "fundamental",
+                    "status": "usable",
+                    "summary": "Profitability remains solid.",
+                    "direction": "bullish",
+                    "data_completeness_pct": 100,
+                },
+                "sentiment": {
+                    "module": "sentiment",
+                    "status": "usable",
+                    "summary": "Coverage leans positive.",
+                    "direction": "bullish",
+                    "data_completeness_pct": 80,
+                },
+                "event": {
+                    "module": "event",
+                    "status": "usable",
+                    "summary": "No near-term blockers.",
+                    "direction": "neutral",
+                    "data_completeness_pct": 100,
+                },
+            },
+        }
+    )
+
+    assert state.decision_synthesis is not None
+    assert state.decision_synthesis.weight_scheme_used.available_weight_sum == 0.5
+    assert state.decision_synthesis.weight_scheme_used.available_weight_ratio == 0.5
+    assert state.decision_synthesis.weight_scheme_used.renormalized is True
+    assert state.decision_synthesis.weight_scheme_used.applied_weights.technical is None
+    assert "关键模块证据不足，当前综合结论稳定性受限" in state.decision_synthesis.risks
+
+    technical_contribution = next(
+        item
+        for item in state.decision_synthesis.module_contributions
+        if item.module == "technical"
+    )
+    assert technical_contribution.status == "excluded"
+    assert technical_contribution.applied_weight is None
+    assert technical_contribution.contribution is None
