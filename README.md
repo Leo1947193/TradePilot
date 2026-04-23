@@ -143,6 +143,21 @@ MINIMAX_BASE_URL=https://api.minimaxi.com/v1
 - 应用内部会把 `minimax-m2.7` 映射成 OpenAI 兼容接口需要的 `MiniMax-M2.7`
 - MiniMax 调用已按 OpenAI 兼容方式实现，默认 base URL 对应 `https://api.minimaxi.com/v1`
 
+如果你要通过 OpenRouter 调用其他模型：
+
+```env
+LLM_PROVIDER=openrouter
+LLM_MODEL=openai/gpt-5.4-mini
+OPENROUTER_API_KEY=your_openrouter_key
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+```
+
+说明：
+
+- `LLM_MODEL` 直接写 OpenRouter 的官方模型标识，例如 `openai/gpt-5.4-mini`、`anthropic/claude-sonnet-4`
+- OpenRouter 适配器按官方 OpenAI SDK 兼容方式实现，基础地址默认是 `https://openrouter.ai/api/v1`
+- 当前实现会默认开启 `reasoning` 请求字段；如果模型不支持，会由上游模型能力决定是否忽略
+
 说明：
 
 - 推荐使用大写环境变量名；`POSTGRES_DSN` 仍兼容，但会优先覆盖 `POSTGRES_HOST/PORT/USER/PASSWORD/DB`

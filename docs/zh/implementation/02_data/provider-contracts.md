@@ -289,13 +289,14 @@ provider 负责“如实返回数据或抛错”，graph node 决定如何降级
 
 - `LLM_PROVIDER`
 - `LLM_MODEL`
-- 厂商专属凭证，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`
+- 厂商专属凭证，例如 `MINIMAX_API_KEY`、`OPENROUTER_API_KEY`
+- 厂商专属 base URL，例如 `MINIMAX_BASE_URL`、`OPENROUTER_BASE_URL`
 
 实现要求：
 
 1. `Settings` 负责读取上述变量，业务层不直接读环境变量。
 2. `factory.py` 是唯一允许判断 `llm_provider` 的地方。
-3. `LLM_MODEL` 保存厂商原生 model id；factory 不应偷偷改写成另一套内部别名。
+3. `LLM_MODEL` 默认保存厂商原生 model id；若兼容第三方 OpenAI 适配层需要做极小写法归一化，必须在 factory 中显式、可测试地完成。
 4. 只有当前被选中的 `LLM_PROVIDER` 需要校验对应凭证；未选中的厂商配置可缺失。
 5. 不支持的 `LLM_PROVIDER` 或缺失当前厂商凭证时，应在构建阶段快速失败。
 

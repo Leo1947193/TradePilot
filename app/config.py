@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     minimax_api_key: str | None = None
     minimax_base_url: str = "https://api.minimaxi.com/v1"
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     request_timeout_seconds: float = Field(default=8.0, gt=0)
 
     @model_validator(mode="after")

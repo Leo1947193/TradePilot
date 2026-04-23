@@ -146,7 +146,8 @@ uv run python -m app.db.migrate up
 
 - `LLM_PROVIDER`
 - `LLM_MODEL`
-- 按厂商拆分的凭证变量，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`
+- 按厂商拆分的凭证变量，例如 `MINIMAX_API_KEY`、`OPENROUTER_API_KEY`
+- 按厂商拆分的 base URL，例如 `MINIMAX_BASE_URL`、`OPENROUTER_BASE_URL`
 
 实现约束：
 
